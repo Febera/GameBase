@@ -1,0 +1,19 @@
+{
+  "name": "recomendador-jogos",
+  "private": true,
+  "description": "Descoberta de jogos de PC para um grupo de amigos (IGDB, GamerPower, IsThereAnyDeal).",
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": { "node": ">=22 <25" },
+  "scripts": {
+    "dev": "concurrently -n api,web -c magenta,cyan \"npm run dev -w @rj/api\" \"npm run dev -w @rj/web\"",
+    "dev:api": "npm run dev -w @rj/api",
+    "dev:web": "npm run dev -w @rj/web",
+    "build": "npm run build -w @rj/api && npm run build -w @rj/web",
+    "test": "npm run test -w @rj/api && npm run test -w @rj/web",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.6",
+    "typescript": "5.9.3"
+  }
+}

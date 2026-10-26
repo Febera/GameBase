@@ -1,0 +1,418 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/bricolage-grotesque';
+@import '@fontsource-variable/figtree';
+
+/*
+ * Tokens de cor por tema. O tema vem do atributo data-theme no <html>,
+ * definido antes da pintura pelo script do index.html.
+ *
+ * Cada seção da home terá sua própria cor de destaque (accent-*):
+ * a cor identifica o tipo de lista, não é decoração.
+ */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #181818;
+  --surface: #202020;
+  --surface-2: #2a2a2a;
+  --surface-3: #343434;
+  --ink: #f2f2f2;
+  --muted: #a3a3a3;
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.14);
+  --scrim: rgb(10 10 10 / 0.88);
+  /* Fundo da página do jogo: a arte aparece no topo e some até a cor da página. */
+  --hero-fade: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(24, 24, 24, 1) 50%);
+
+  --brand-a: #3ddcf5;
+  --brand-b: #0ab2ef;
+  --brand-c: #ff5fa8;
+
+  --accent-new: #3ddcf5;
+  --accent-free: #34e5a5;
+  --accent-deal: #a1cd44;
+  /* Avaliações: positivas, mistas, negativas */
+  --review-pos: #a1cd44;
+  --review-mid: #e1d417;
+  --review-neg: #f70000;
+  --topbar: #0f0f0f;
+  /* Barra do topo sobre a arte do jogo: translúcida e desfocada */
+  --topbar-glass: rgb(15 15 15 / 0.35);
+  --topbar-glass-line: rgb(255 255 255 / 0.1);
+  --topbar-glass-field: rgb(255 255 255 / 0.08);
+  --topbar-glass-ink: #e6e6e6;
+  --topbar-muted: var(--muted);
+  --filters-color: var(--brand-b);
+  --accent-demo: #b49bff;
+  --accent-paid: #ff5fa8;
+  /* Texto sobre etiquetas coloridas */
+  --on-accent: #121212;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f4f5;
+  --surface: #ffffff;
+  --surface-2: #ebebed;
+  --surface-3: #dedee2;
+  --ink: #181818;
+  --muted: #5c5c66;
+  --line: rgb(0 0 0 / 0.09);
+  --line-strong: rgb(0 0 0 / 0.16);
+  --scrim: rgb(14 14 14 / 0.86);
+  --hero-fade: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(244, 244, 245, 1) 50%);
+
+  --brand-a: #0aa6c2;
+  --brand-b: #0a8fc4;
+  --brand-c: #e0307f;
+
+  --accent-new: #0a91ab;
+  --accent-free: #0d9a68;
+  --accent-deal: #4f7a0c;
+  --review-pos: #4f7a0c;
+  --review-mid: #8a7d00;
+  --review-neg: #d00000;
+  --topbar: #ffffff;
+  --topbar-glass: rgb(255 255 255 / 0.5);
+  --topbar-glass-line: rgb(0 0 0 / 0.08);
+  --topbar-glass-field: rgb(255 255 255 / 0.65);
+  --topbar-glass-ink: #2a2a2a;
+  --topbar-muted: var(--muted);
+  --filters-color: var(--brand-b);
+  --accent-demo: #6d4bf2;
+  --accent-paid: #d0256f;
+  --on-accent: #ffffff;
+}
+
+/* Bordas menos arredondadas em todo o site (círculos continuam com rounded-full). */
+@theme {
+  --radius-xs: 0.15rem;
+  --radius-sm: 0.2rem;
+  --radius-md: 0.3rem;
+  --radius-lg: 0.3rem;
+  --radius-xl: 0.3rem;
+  --radius-2xl: 0.3rem;
+}
+
+@theme inline {
+  --font-display: 'Bricolage Grotesque Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-sans: 'Figtree Variable', 'Segoe UI', system-ui, sans-serif;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-scrim: var(--scrim);
+  --color-brand-a: var(--brand-a);
+  --color-brand-b: var(--brand-b);
+  --color-brand-c: var(--brand-c);
+  --color-topbar: var(--topbar);
+}
+
+@layer base {
+  html {
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    scroll-padding-top: calc(4rem + env(safe-area-inset-top, 0px));
+  }
+  body {
+    min-height: 100dvh;
+    /* Fundos que ocupam a largura da tela (w-screen) não criam rolagem lateral. */
+    overflow-x: clip;
+    font-family: var(--font-sans);
+    background: var(--bg);
+  }
+  :focus-visible {
+    outline: 2px solid var(--brand-b);
+    outline-offset: 3px;
+    border-radius: 0.3rem;
+  }
+  /* Resposta ao clique: o botão "afunda" de leve. */
+  button {
+    transition-property: color, background-color, border-color, opacity, box-shadow, transform, scale;
+    transition-duration: 150ms;
+  }
+  button:not(:disabled):active {
+    scale: 0.97;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--brand-b) 40%, transparent);
+  }
+}
+
+/* Tokens de movimento (skill de motion design). */
+:root {
+  --ease-out-quart: cubic-bezier(0.165, 0.84, 0.44, 1);
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-in-out-cubic: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 240ms;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
+}
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@keyframes panel-enter {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+@keyframes gold-sweep {
+  from {
+    translate: -120% 0;
+  }
+  to {
+    translate: 220% 0;
+  }
+}
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    scale: 0.3;
+    rotate: 0deg;
+  }
+  50% {
+    opacity: 1;
+    scale: 1;
+    rotate: 90deg;
+  }
+}
+
+@layer components {
+  /* Conteúdo de cada página entra com um leve deslize. */
+  .page-enter {
+    animation: page-enter var(--dur-3) var(--ease-out-quart) both;
+  }
+  .panel-enter {
+    animation: panel-enter var(--dur-2) var(--ease-out-quart) both;
+  }
+  .pop-in {
+    transform-origin: top center;
+    animation: pop-in var(--dur-2) var(--ease-out-quart) both;
+  }
+  /* Itens de listas surgem em cascata (o atraso vem de --i). */
+  .reveal {
+    animation: reveal 380ms var(--ease-out-quart) both;
+    animation-delay: calc(min(var(--i, 0), 12) * 35ms);
+  }
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface-2) 30%, var(--surface-3) 50%, var(--surface-2) 70%);
+    background-size: 300% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+
+  /*
+   * Card estilo biblioteca da Steam: a área do link fica parada (o cursor não "escapa") e a capa
+   * dentro dela levanta, inclina na direção do mouse e ganha um reflexo de luz.
+   */
+  .card-tilt {
+    transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+    transition:
+      transform 200ms var(--ease-out-quart),
+      translate 240ms var(--ease-out-quart),
+      scale 240ms var(--ease-out-quart),
+      box-shadow 240ms var(--ease-out-quart);
+    will-change: transform;
+  }
+  /*
+   * Efeito de vidro (glassmorphism): ao passar o mouse, uma faixa de reflexo diagonal atravessa
+   * a capa uma vez, e uma borda fina e translúcida aparece, como luz batendo num vidro.
+   */
+  .card-glass {
+    background: linear-gradient(
+      115deg,
+      transparent 30%,
+      rgb(255 255 255 / 0.05) 40%,
+      rgb(255 255 255 / 0.22) 48%,
+      rgb(255 255 255 / 0.06) 56%,
+      transparent 66%
+    );
+    translate: -110% 0;
+    transition: translate 0s;
+  }
+  .card-glass-edge {
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0),
+      inset 0 1px 0 rgb(255 255 255 / 0);
+    transition: box-shadow 300ms ease;
+  }
+  @media (hover: hover) {
+    .card-link:hover .card-tilt {
+      translate: 0 -6px;
+      scale: 1.04;
+      box-shadow: 0 22px 40px -14px rgb(0 0 0 / 0.75);
+    }
+    .card-link:hover .card-glass {
+      translate: 110% 0;
+      transition: translate 750ms var(--ease-in-out-cubic);
+    }
+    .card-link:hover .card-glass-edge {
+      box-shadow:
+        inset 0 0 0 1px rgb(255 255 255 / 0.22),
+        inset 0 1px 0 rgb(255 255 255 / 0.35);
+    }
+    .card-link:hover .card-cover {
+      filter: brightness(1.08) saturate(1.08);
+    }
+  }
+  .card-cover {
+    transition: filter var(--dur-3) ease;
+  }
+
+  /* Seção de histórico dourada: quando o preço atual é o menor da história. */
+  .gold-panel {
+    background: linear-gradient(120deg, #6b4c0e 0%, #c48a1d 30%, #f3d27a 50%, #d9a33a 70%, #7d5810 100%);
+    color: #2a1d02;
+  }
+  .gold-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 45%;
+    background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.55), transparent);
+    animation: gold-sweep 2.8s var(--ease-in-out-cubic) infinite;
+    pointer-events: none;
+  }
+  .sparkle {
+    position: absolute;
+    color: #fff8d6;
+    filter: drop-shadow(0 0 4px rgb(255 240 180 / 0.9));
+    animation: twinkle 2.2s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  /* Trilho horizontal dos carrosséis: 5 cards no desktop, menos em telas menores. */
+  .carousel-track {
+    --gap: 1rem;
+    --visible: 2.3;
+    /* Espaço para o card levantar e crescer no hover sem ser cortado pela rolagem. */
+    padding: 14px 8px;
+    margin: -14px -8px;
+    /* O encaixe da rolagem respeita o espaço lateral: no início, nada fica "rolado". */
+    scroll-padding-inline: 8px;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: calc((100% - (var(--visible) - 1) * var(--gap)) / var(--visible));
+    gap: var(--gap);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    scroll-behavior: smooth;
+  }
+  .carousel-track::-webkit-scrollbar {
+    display: none;
+  }
+  .carousel-track > * {
+    scroll-snap-align: start;
+  }
+  @media (min-width: 640px) {
+    .carousel-track {
+      --visible: 3.3;
+    }
+  }
+  @media (min-width: 1024px) {
+    .carousel-track {
+      --visible: 5;
+      --gap: 1.25rem;
+    }
+  }
+
+  .wordmark {
+    background: linear-gradient(100deg, var(--brand-a), var(--brand-b) 55%, var(--brand-c));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carousel-track {
+    scroll-behavior: auto;
+  }
+  .card-tilt {
+    transform: none !important;
+  }
+  .card-glass {
+    display: none;
+  }
+  .gold-panel::after,
+  .sparkle {
+    animation: none !important;
+    display: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Fora de @layer de propósito: precisa vencer os utilitários (bg-surface, border-line) da barra. */
+/*
+ * Barra do topo nas páginas de jogo e oferta: a arte aparece através dela, borrada.
+ * Ícones e textos ficam mais claros (no tema escuro) para continuar legíveis sobre a arte.
+ */
+.topbar-glass {
+  background: var(--topbar-glass);
+  border-color: var(--topbar-glass-line);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  --topbar-muted: var(--topbar-glass-ink);
+  --muted: var(--topbar-glass-ink);
+}
+:root:not([data-theme='light']) .topbar-glass {
+  --filters-color: #5fd0f7;
+}
+.topbar-glass .search-field {
+  background: var(--topbar-glass-field);
+  border-color: color-mix(in srgb, var(--topbar-glass-ink) 18%, transparent);
+}
+/* O painel aberto dentro da barra volta às cores normais. */
+.topbar-glass [role='listbox'],
+.topbar-glass [id='painel-opcoes'] {
+  --muted: #a3a3a3;
+}
+:root[data-theme='light'] .topbar-glass [role='listbox'],
+:root[data-theme='light'] .topbar-glass [id='painel-opcoes'] {
+  --muted: #5c5c66;
+}
+
