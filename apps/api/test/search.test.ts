@@ -23,7 +23,7 @@ describe('buildSearchQuery', () => {
     expect(byRating.search).toBeNull();
     expect(byRating.where).toContain('name ~ *"por\\"tal"*');
     expect(byRating.where).toContain('total_rating_count >= 5');
-    expect(byRating.sort).toBe('total_rating desc');
+    expect(byRating.sort).toBe('total_rating_count desc');
   });
 
   it('jogadores: coop, qualquer online e sem informação', () => {
@@ -119,6 +119,27 @@ describe('searchService', () => {
     const all = await service.search({ prices: ['free', 'demo', 'paid'] }, 0, 10, 'hide');
     expect(all.items).toHaveLength(5);
     expect(all.pending).toBeUndefined();
+  });
+
+  it('"mais bem avaliados" usa média bayesiana da Steam, com mínimo de 500 avaliações', async () => {
+    const { igdb } = igdbWith(5);
+    const service = createSearchService({
+      igdb,
+      cache: new MemoryCache(),
+      adult: adultFilter(),
+      lookup,
+      steam: steamSyncStub([
+        steamApp(1001, { reviews: { percent: 99, total: 520 } }), // nota alta, poucas avaliações
+        steamApp(1002, { reviews: { percent: 95, total: 80_000 }, hasDemo: true }),
+        steamApp(1003, { reviews: { percent: 100, total: 120 } }), // abaixo do mínimo: fora
+        steamApp(1004, { reviews: { percent: 70, total: 40_000 } }),
+      ]),
+    });
+    const page = await service.search({ sort: 'rating' }, 0, 10, 'hide');
+    expect(page.items.map((r) => r.id)).toEqual([2, 1, 4]);
+    expect(page.items[0]?.hasDemo).toBe(true);
+    expect(page.items[1]?.hasDemo).toBe(false);
+    expect(page.pending).toBe(1); // o 5º ainda não tem dados da Steam
   });
 
   it('todas as opções marcadas equivalem a nenhuma', () => {

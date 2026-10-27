@@ -3,7 +3,7 @@ import { Ban, Users } from 'lucide-react';
 import { Link } from 'react-router';
 import { formatDayMonth, formatMoney } from '../../lib/cards';
 import { reviewColor, reviewLabel } from '../gamepage/ReviewBar';
-import { playersText } from '../ui/GameTags';
+import { DemoTag, playersText } from '../ui/GameTags';
 
 /** Resumo de jogadores; com o filtro de coop ativo, o número de coop vem primeiro. */
 export function playersSummary(r: SearchResult, coopFirst = false): string | null {
@@ -50,6 +50,7 @@ export function ResultRow({ result, coopFirst = false }: { result: SearchResult;
           {result.releaseDate && <p className="text-sm text-muted md:text-[0.95rem]">{fullDate(result.releaseDate)}</p>}
         </div>
         <p className="flex min-h-[22px] flex-wrap items-center gap-x-3.5 gap-y-1.5">
+          {result.hasDemo && <DemoTag />}
           {reviews && (
             <span className="text-sm font-bold" style={{ color: reviewColor(reviews.percent) }}>
               {reviewLabel(reviews.percent)}

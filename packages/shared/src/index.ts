@@ -28,6 +28,8 @@ export interface GameCard {
   reviewCount?: number | null;
   /** Avaliações na Steam: % positivas e total, quando já verificadas. */
   steamReviews?: { percent: number; total: number } | null;
+  /** Tem demo grátis na Steam (quando já verificado). */
+  hasDemo?: boolean;
 }
 
 export interface Money {

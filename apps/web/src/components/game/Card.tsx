@@ -1,5 +1,6 @@
 import type { PointerEvent, ReactNode } from 'react';
 import { Link } from 'react-router';
+import { DemoTag } from '../ui/GameTags';
 import type { CardModel } from '../../lib/cards';
 
 interface Props {
@@ -114,6 +115,12 @@ function CardContent({ card, featured = false }: Props) {
       {card.badge && (
         <span className="absolute left-2.5 top-2.5 rounded-sm bg-[var(--accent)] px-2 py-0.5 text-xs font-bold tabular-nums text-[var(--on-accent)] shadow-sm">
           {card.badge}
+        </span>
+      )}
+
+      {card.demo && (
+        <span className="absolute right-2.5 top-2.5 shadow-sm">
+          <DemoTag />
         </span>
       )}
 

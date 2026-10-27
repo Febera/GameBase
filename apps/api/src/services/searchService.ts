@@ -21,6 +21,7 @@ import type { IgdbLookup } from './igdbLookup.js';
 import { CARD_FIELDS, type IgdbGame, igdbImageUrl, toGameCard } from './igdbMappers.js';
 import { paginate } from './listing.js';
 import { ACCEPTED_GAME_TYPES, buildSearchQuery, PC_PLATFORM_ID } from './searchQuery.js';
+import { bayesianRank } from './sorting.js';
 import type { SteamSync } from './steamSync.js';
 import type { SteamApp } from '../db/steamAppsRepository.js';
 
@@ -225,6 +226,9 @@ export function createSearchService({
       const window = await loadWindow({ ...filters, prices: [], showDuplicates: undefined });
       const wantedPrices = new Set(filters.prices);
       const needsSteamCategory = wantedPrices.size > 0;
+      // "Mais bem avaliados" ordena pelas avaliações da Steam: precisa delas na janela toda.
+      const byRating = filters.sort === 'rating';
+      const needsSteamAll = needsSteamCategory || byRating;
       if (needsSteamCategory && !steam) {
         throw new MissingConfigError(
           'DATABASE_URL',
@@ -242,7 +246,7 @@ export function createSearchService({
         const { apps } = await steam.read(appIds);
         rows = shown.map((c) => ({ c, app: c.steamAppId ? apps.get(c.steamAppId) : undefined }));
         // Para faixa de preço, todos precisam dos dados da Steam; senão, só a página exibida.
-        const toRefresh = needsSteamCategory
+        const toRefresh = needsSteamAll
           ? appIds
           : shown.slice(offset, offset + limit).flatMap((c) => (c.steamAppId ? [c.steamAppId] : []));
         steam.refresh(toRefresh).catch((error: unknown) => log(`Busca: falha ao enfileirar Steam: ${String(error)}`));
@@ -269,6 +273,9 @@ export function createSearchService({
           }
           const category = categorize({ ...priced, hasDemo: Boolean(app?.hasDemo || priced.hasDemo) });
           if (!category || !wantedPrices.has(category)) return [];
+        } else if (byRating && c.steamAppId && !app) {
+          // Ainda sem dados da Steam: não dá para saber a nota; volta quando a fila chegar nele.
+          pending++;
         }
         const reviews = app?.reviews ?? priced?.reviews ?? null;
         return [
@@ -278,12 +285,15 @@ export function createSearchService({
             price: priced?.found ? steamPrice(priced) : c.result.price,
             reviewCount: reviews?.total ?? (c.igdbCount || null),
             steamReviews: reviews,
+            hasDemo: Boolean((app?.found && app.hasDemo) || (priced?.found && priced.hasDemo)),
             steamAppId: (priced?.found ? priced.appId : c.steamAppId) ?? null,
           } as SearchResult & { steamAppId: number | null },
         ];
       });
 
-      const page = paginate(results, offset, limit);
+      // Sem o banco (sem dados da Steam), fica a ordem da IGDB.
+      const ordered = byRating && steam ? bayesianRank(results, (r) => r.steamReviews) : results;
+      const page = paginate(ordered, offset, limit);
       // Validade da promoção só para os itens da página que estão em promoção.
       const onSale = (page.items as (SearchResult & { steamAppId: number | null })[]).filter(
         (r) => r.steamAppId && r.price && r.price.cut > 0,

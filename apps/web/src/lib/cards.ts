@@ -20,6 +20,8 @@ export interface CardModel {
   label: string;
   /** Fim da promoção ou do giveaway (AAAA-MM-DD ou ISO 8601), quando informado. */
   endsAt?: string | null;
+  /** Tem demo grátis (selo DEMO no canto da capa). */
+  demo?: boolean;
 }
 
 const moneyFormatters = new Map<string, Intl.NumberFormat>();
@@ -49,6 +51,7 @@ export function gameToCard(game: GameCard): CardModel {
     fallbackImage: null,
     label: game.name,
   };
+  if (game.hasDemo) card.demo = true;
   if (game.free) {
     card.price = { current: 'Grátis' };
     card.label = `${game.name}, grátis`;
@@ -61,6 +64,7 @@ export function gameToCard(game: GameCard): CardModel {
       ? `${game.name}, ${game.price.cut}% de desconto: de ${formatMoney(game.price.regular)} por ${current}`
       : `${game.name}, ${current}`;
   }
+  if (card.demo) card.label += ', com demo grátis';
   return card;
 }
 

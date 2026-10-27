@@ -113,8 +113,9 @@ export function SearchPage() {
 
         {pending > 0 && (
           <p role="status" className="text-sm text-muted">
-            Verificando {pending} {pending === 1 ? 'jogo' : 'jogos'} na Steam para o filtro de preço. Os resultados se
-            atualizam sozinhos.
+            Verificando {pending} {pending === 1 ? 'jogo' : 'jogos'} na Steam{' '}
+            {filters.sort === 'rating' && !filters.prices?.length ? 'para ordenar pelas avaliações' : 'para o filtro de preço'}. Os
+            resultados se atualizam sozinhos.
           </p>
         )}
 

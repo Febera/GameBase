@@ -1,5 +1,5 @@
 import type { GameDetails, PriceLow } from '@rj/shared';
-import { History, Sparkles } from 'lucide-react';
+import { History, Sparkle } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { formatMoney } from '../../lib/cards';
 
@@ -49,7 +49,8 @@ export function PriceHistory({ data }: { data: PricingData }) {
     >
       {gold &&
         SPARKLES.map((s) => (
-          <Sparkles
+          <Sparkle
+            fill="white"
             key={`${s.left}-${s.top}`}
             aria-hidden
             className="sparkle"
@@ -60,7 +61,7 @@ export function PriceHistory({ data }: { data: PricingData }) {
       <p
         className={`relative mb-2 flex items-center gap-2 text-[0.7rem] font-bold uppercase tracking-wider ${gold ? '' : 'text-white/75'}`}
       >
-        {gold ? <Sparkles className="size-3.5" aria-hidden /> : <History className="size-3.5" aria-hidden />}
+        {gold ? <Sparkle className="size-3.5" aria-hidden /> : <History className="size-3.5" aria-hidden />}
         {gold ? 'Menor preço da história, agora' : 'Histórico de preços'}
       </p>
 

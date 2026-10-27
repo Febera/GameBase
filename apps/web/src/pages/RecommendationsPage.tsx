@@ -13,7 +13,11 @@ import { useSlowLoading } from '../hooks/useSlowLoading';
 
 const TOP = 5;
 /** Altura de cada degrau no desktop: o 1º é o mais alto, descendo 40px por posição. */
-const STEP_HEIGHT = ['lg:h-[300px]', 'lg:h-[260px]', 'lg:h-[220px]', 'lg:h-[180px]', 'lg:h-[140px]'];
+/*
+ * Altura mínima de cada degrau (1º ao 5º). É mínima, não fixa: com DEMO e jogadores o conteúdo
+ * do 5º passa de 140px, e com altura fixa o título (line-clamp) encolhia até sumir.
+ */
+const STEP_HEIGHT = ['lg:min-h-[320px]', 'lg:min-h-[290px]', 'lg:min-h-[260px]', 'lg:min-h-[230px]', 'lg:min-h-[200px]'];
 
 export function RecommendationsPage() {
   const { data, isPending, isError, error, refetch } = useBoard();
@@ -139,7 +143,7 @@ function PodiumStep({ entry, rank, threshold }: { entry: RecommendationEntry; ra
         </span>
         <Link
           to={`/jogo/${game.id}`}
-          className={`relative line-clamp-2 font-display font-bold leading-tight text-white hover:underline ${first ? 'text-xl' : 'text-[1.05rem]'}`}
+          className={`relative line-clamp-2 shrink-0 font-display font-bold leading-tight text-white hover:underline ${first ? 'text-xl' : 'text-[1.05rem]'}`}
         >
           {game.name}
         </Link>

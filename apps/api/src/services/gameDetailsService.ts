@@ -15,7 +15,7 @@ import type { GiveawaysService } from './giveawaysService.js';
 import type { SteamSync } from './steamSync.js';
 
 const PC_PLATFORM_ID = 6;
-const MAX_SIMILAR = 11;
+const MAX_SIMILAR = 9;
 const DETAILS_TTL_MS = 6 * 60 * 60 * 1000;
 
 interface Named {

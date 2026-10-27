@@ -14,5 +14,5 @@ export const QUICK_SEARCHES: QuickSearch[] = [
   { key: 'free', label: 'Grátis para jogar', description: 'Free-to-play e de graça agora', filters: { prices: ['free'] } },
   { key: 'demo', label: 'Pagos com demo grátis', description: 'Teste antes de comprar', filters: { prices: ['demo'] } },
   { key: 'recent', label: 'Lançamentos recentes', description: 'Do mais novo para o mais antigo', filters: { sort: 'recent' } },
-  { key: 'rated', label: 'Mais bem avaliados', description: 'Nota alta e muitas avaliações', filters: { sort: 'rating' } },
+  { key: 'rated', label: 'Mais bem avaliados', description: 'Steam, 500+ avaliações', filters: { sort: 'rating' } },
 ];

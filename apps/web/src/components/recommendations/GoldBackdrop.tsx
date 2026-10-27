@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react';
+import { Sparkle } from 'lucide-react';
 import type { CSSProperties } from 'react';
 
 /** Faíscas brancas em posições fixas (não "pulam" a cada render), piscando em tempos diferentes. */
@@ -27,7 +27,8 @@ export function GoldBackdrop() {
     >
       <div className="gold-panel absolute inset-0" />
       {SPARKLES.map((s) => (
-        <Sparkles
+        <Sparkle
+          fill="white"
           key={`${s.left}-${s.top}`}
           className="sparkle text-white"
           style={{ left: s.left, top: s.top, width: s.size, height: s.size, animationDelay: s.delay, color: '#ffffff' } as CSSProperties}

@@ -47,13 +47,14 @@ export function buildSearchQuery(filters: SearchFilters, ctx: QueryContext): Bui
 
   if (q && sort !== 'relevance') conditions.push(`name ~ *${quote(q)}*`);
   if (sort === 'recent') conditions.push(`first_release_date <= ${ctx.nowS}`);
-  // Ordenar por nota com poucas avaliações joga jogos obscuros para o topo.
+  // "Mais bem avaliados": a janela traz os mais avaliados da IGDB (populares) e o serviço
+  // reordena pela média bayesiana das avaliações da Steam (ver bayesianRank).
   if (sort === 'rating') conditions.push('total_rating_count >= 5');
 
   const sortClause = {
     relevance: null,
     popular: 'total_rating_count desc',
-    rating: 'total_rating desc',
+    rating: 'total_rating_count desc',
     recent: 'first_release_date desc',
   }[sort];
 

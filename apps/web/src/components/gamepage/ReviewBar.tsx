@@ -6,6 +6,11 @@ export function reviewColor(percent: number): string {
   return 'var(--review-neg)';
 }
 
+/** Parte positiva da barra: verde, ou amarela quando as avaliações são mistas. */
+export function reviewBarColor(percent: number): string {
+  return percent >= 40 && percent < 70 ? 'var(--review-mid)' : 'var(--review-pos)';
+}
+
 export function reviewLabel(percent: number): string {
   if (percent >= 95) return 'Extremamente positivas';
   if (percent >= 80) return 'Muito positivas';
@@ -34,7 +39,7 @@ export function ReviewBar({ percent, count, url }: { percent: number; count: num
         role="img"
         aria-label={`${percent}% das avaliações na Steam são positivas`}
       >
-        <span className="bg-[var(--accent-new)]" style={{ width: `${percent}%` }} />
+        <span style={{ width: `${percent}%`, background: reviewBarColor(percent) }} />
         <span className="flex-1 bg-[var(--review-neg)]" />
       </div>
       <p className="mt-1 text-xs text-muted tabular-nums">{percent}% positivas</p>
