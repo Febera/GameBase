@@ -4,7 +4,7 @@ import { buildApp } from './app.js';
 import { MemoryCache } from './cache/memoryCache.js';
 import { createGamerPowerClient } from './clients/gamerpower.js';
 import { createIgdbClient } from './clients/igdb.js';
-import { createItadClient } from './clients/itad.js';
+import { createItadClient, type ItadClient } from './clients/itad.js';
 import { createRateLimiter } from './clients/rateLimiter.js';
 import { createSteamClient } from './clients/steam.js';
 import { createTwitchAuth } from './clients/twitchAuth.js';
@@ -24,6 +24,7 @@ import { createItadPricing } from './services/itadPricing.js';
 import { createOfferService } from './services/offerService.js';
 import { createRecommendationsService } from './services/recommendationsService.js';
 import { createSearchService } from './services/searchService.js';
+import { withItadReviews } from './services/steamReviewsFallback.js';
 import { createSteamSync, type SteamSync } from './services/steamSync.js';
 
 /** Funciona tanto rodando de src/ (tsx) quanto de dist/ (build). */
@@ -40,7 +41,7 @@ interface DbServices {
   recommendations: RecommendationsRepository;
 }
 
-async function setupDatabase(config: Config, warn: Log, info: Log): Promise<DbServices | null> {
+async function setupDatabase(config: Config, itad: ItadClient, warn: Log, info: Log): Promise<DbServices | null> {
   if (!config.DATABASE_URL) {
     warn('DATABASE_URL não configurada: grátis, demos, pagos e recomendações vão responder 503.');
     return null;
@@ -67,7 +68,8 @@ async function setupDatabase(config: Config, warn: Log, info: Log): Promise<DbSe
     }
     return {
       steam: createSteamSync({
-        steam: createSteamClient(),
+        // Avaliações: Steam direto; se não vierem, pela IsThereAnyDeal.
+        steam: withItadReviews(createSteamClient({ log: warn }), itad, warn),
         repo: createSteamAppsRepository(pool),
         log: warn,
       }),
@@ -100,7 +102,7 @@ async function main() {
   const cache = new MemoryCache();
   const adult = createAdultContentFilter({ igdb, cache });
   const lookup = createIgdbLookup(igdb);
-  const database = await setupDatabase(config, (m) => warn(m), (m) => info(m));
+  const database = await setupDatabase(config, itad, (m) => warn(m), (m) => info(m));
   const steam = database?.steam ?? null;
   const deals = createDealsService({ itad, lookup, adult, cache, steam, log: (m) => warn(m) });
   const giveaways = createGiveawaysService({ gamerpower, deals, lookup, adult, itad, cache, steam, log: (m) => warn(m) });

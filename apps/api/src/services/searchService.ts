@@ -21,8 +21,8 @@ import type { IgdbLookup } from './igdbLookup.js';
 import { CARD_FIELDS, type IgdbGame, igdbImageUrl, toGameCard } from './igdbMappers.js';
 import { paginate } from './listing.js';
 import { ACCEPTED_GAME_TYPES, buildSearchQuery, PC_PLATFORM_ID } from './searchQuery.js';
-import { bayesianRank } from './sorting.js';
-import type { SteamSync } from './steamSync.js';
+import { bayesianRank, MIN_RATED_REVIEWS } from './sorting.js';
+import { MISSING_REVIEWS_RETRY_MS, type SteamSync } from './steamSync.js';
 import type { SteamApp } from '../db/steamAppsRepository.js';
 
 /** Lojas oferecidas no filtro, reconhecidas pelo nome da fonte na IGDB. */
@@ -249,7 +249,9 @@ export function createSearchService({
         const toRefresh = needsSteamAll
           ? appIds
           : shown.slice(offset, offset + limit).flatMap((c) => (c.steamAppId ? [c.steamAppId] : []));
-        steam.refresh(toRefresh).catch((error: unknown) => log(`Busca: falha ao enfileirar Steam: ${String(error)}`));
+        steam
+          .refresh(toRefresh, 'high', { needReviews: byRating })
+          .catch((error: unknown) => log(`Busca: falha ao enfileirar Steam: ${String(error)}`));
       }
 
       // Registros repetidos e edições do mesmo jogo viram um (a menos que peçam para mostrar).
@@ -273,8 +275,12 @@ export function createSearchService({
           }
           const category = categorize({ ...priced, hasDemo: Boolean(app?.hasDemo || priced.hasDemo) });
           if (!category || !wantedPrices.has(category)) return [];
-        } else if (byRating && c.steamAppId && !app) {
-          // Ainda sem dados da Steam: não dá para saber a nota; volta quando a fila chegar nele.
+        } else if (
+          byRating &&
+          c.steamAppId &&
+          (!app || (app.found && !app.reviews && app.fetchedAt.getTime() < now() - MISSING_REVIEWS_RETRY_MS))
+        ) {
+          // Ainda sem dados (ou sem avaliações) da Steam: volta quando a fila chegar nele.
           pending++;
         }
         const reviews = app?.reviews ?? priced?.reviews ?? null;
@@ -293,6 +299,14 @@ export function createSearchService({
 
       // Sem o banco (sem dados da Steam), fica a ordem da IGDB.
       const ordered = byRating && steam ? bayesianRank(results, (r) => r.steamReviews) : results;
+      if (byRating && steam && offset === 0) {
+        const withSteam = rows.filter((r) => r.c.steamAppId).length;
+        const withReviews = results.filter((r) => r.steamReviews).length;
+        log(
+          `Mais bem avaliados: ${window.length} da IGDB, ${withSteam} com App ID da Steam, ` +
+            `${withReviews} com avaliações, ${ordered.length} com ${MIN_RATED_REVIEWS}+, ${pending} na fila.`,
+        );
+      }
       const page = paginate(ordered, offset, limit);
       // Validade da promoção só para os itens da página que estão em promoção.
       const onSale = (page.items as (SearchResult & { steamAppId: number | null })[]).filter(

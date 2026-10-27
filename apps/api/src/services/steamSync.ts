@@ -10,6 +10,11 @@ export const STEAM_STALE_MS = 12 * 60 * 60 * 1000;
  * 1,6 s dá ~187, com folga.
  */
 const DEFAULT_DELAY_MS = 1600;
+/**
+ * Jogos guardados sem avaliações (registros de antes da coluna existir, ou consulta que falhou)
+ * voltam para a fila depois disso, quando quem pede precisa das avaliações.
+ */
+export const MISSING_REVIEWS_RETRY_MS = 60 * 60 * 1000;
 /** Pausa após a Steam pedir para desacelerar (HTTP 429 ou 403). */
 const BACKOFF_MS = 2 * 60 * 1000;
 
@@ -20,7 +25,7 @@ export interface SteamSync {
    * Coloca na fila os jogos que não estão no banco ou estão desatualizados.
    * "high" (padrão): jogos que alguém está vendo agora. "low": listas grandes em segundo plano.
    */
-  refresh(appIds: number[], priority?: 'high' | 'low'): Promise<void>;
+  refresh(appIds: number[], priority?: 'high' | 'low', options?: { needReviews?: boolean }): Promise<void>;
   /** Tamanho atual da fila (para logs e testes). */
   readonly queued: number;
   /** Termina quando a fila esvazia (usado nos testes). */
@@ -92,14 +97,18 @@ export function createSteamSync({
       return { apps, pending: appIds.filter((id) => !apps.has(id)).length };
     },
 
-    async refresh(appIds, priority = 'high') {
+    async refresh(appIds, priority = 'high', options = {}) {
       const stored = await repo.findMany(appIds);
       const limit = now() - STEAM_STALE_MS;
+      const reviewsLimit = now() - MISSING_REVIEWS_RETRY_MS;
       // Primeiro os que faltam (afetam quais jogos aparecem), depois os desatualizados.
       const missing = appIds.filter((id) => !stored.has(id));
       const stale = appIds.filter((id) => {
         const app = stored.get(id);
-        return app !== undefined && app.fetchedAt.getTime() < limit;
+        if (app === undefined) return false;
+        if (app.fetchedAt.getTime() < limit) return true;
+        // Quem precisa das avaliações (ordenação por nota) rebusca quem ficou sem elas.
+        return Boolean(options.needReviews && app.found && !app.reviews && app.fetchedAt.getTime() < reviewsLimit);
       });
       const target = priority === 'high' ? high : low;
       for (const id of [...missing, ...stale]) {

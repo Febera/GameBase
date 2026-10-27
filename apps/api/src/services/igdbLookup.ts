@@ -37,8 +37,19 @@ export interface IgdbLookup {
 export function createIgdbLookup(igdb: IgdbClient): IgdbLookup {
   /** Consulta external_games da Steam, caindo para o campo antigo se a IGDB recusar o novo. */
   async function steamExternal<T>(fields: string, where: string): Promise<T[]> {
-    const query = (source: string) =>
-      igdb.query<T>('external_games', `fields ${fields}; where ${source} = ${STEAM_SOURCE} & ${where}; limit 500;`);
+    // Um jogo pode ter vários vínculos com a Steam (edições, relançamentos): a resposta pode
+    // passar de 500 linhas, o máximo da IGDB. Pagina até vir uma página incompleta.
+    const query = async (source: string) => {
+      const rows: T[] = [];
+      for (let offset = 0; ; offset += 500) {
+        const page = await igdb.query<T>(
+          'external_games',
+          `fields ${fields}; where ${source} = ${STEAM_SOURCE} & ${where}; sort id asc; limit 500; offset ${offset};`,
+        );
+        rows.push(...page);
+        if (page.length < 500 || offset >= 4500) return rows;
+      }
+    };
     try {
       return await query('external_game_source');
     } catch (error) {

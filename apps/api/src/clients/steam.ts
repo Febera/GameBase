@@ -73,7 +73,17 @@ export function parseReviews(summary: ReviewSummary | null): SteamApp['reviews']
 export function createSteamClient({
   fetchFn = fetch,
   now = systemClock,
-}: { fetchFn?: typeof fetch; now?: Clock } = {}): SteamClient {
+  log = () => {},
+}: { fetchFn?: typeof fetch; now?: Clock; log?: (message: string) => void } = {}): SteamClient {
+  let reviewFailures = 0;
+  /** Motivo de a Steam não ter devolvido as avaliações: as 3 primeiras vezes e depois 1 a cada 100. */
+  function reviewFailed(appId: number, reason: string) {
+    reviewFailures++;
+    if (reviewFailures <= 3 || reviewFailures % 100 === 0) {
+      log(`Steam: avaliações do app ${appId} não vieram (falha nº ${reviewFailures}): ${reason}`);
+    }
+  }
+
   async function reviewSummary(appId: number): Promise<ReviewSummary | null> {
     try {
       const res = await fetchFn(
@@ -83,11 +93,29 @@ export function createSteamClient({
       if (res.status === 429 || res.status === 403) {
         throw new UpstreamError('steam', res.status, `A Steam respondeu HTTP ${res.status}.`);
       }
-      if (!res.ok) return null;
-      const body = (await res.json()) as { success?: number; query_summary?: ReviewSummary };
-      return body.success ? (body.query_summary ?? null) : null;
+      if (!res.ok) {
+        reviewFailed(appId, `HTTP ${res.status}`);
+        return null;
+      }
+      const text = await res.text();
+      let body: { success?: number; query_summary?: ReviewSummary };
+      try {
+        body = JSON.parse(text) as typeof body;
+      } catch {
+        reviewFailed(appId, `resposta não é JSON: ${text.slice(0, 80).replace(/\s+/g, ' ')}`);
+        return null;
+      }
+      if (!body.success || !body.query_summary) {
+        reviewFailed(appId, `success=${String(body.success)}, query_summary ${body.query_summary ? 'presente' : 'ausente'}`);
+        return null;
+      }
+      if (body.query_summary.total_reviews === undefined) {
+        reviewFailed(appId, `query_summary sem total_reviews (campos: ${Object.keys(body.query_summary).join(', ')})`);
+      }
+      return body.query_summary;
     } catch (error) {
       if (error instanceof UpstreamError) throw error;
+      reviewFailed(appId, String(error));
       return null;
     }
   }

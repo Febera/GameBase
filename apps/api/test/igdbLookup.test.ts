@@ -57,4 +57,21 @@ describe('igdbLookup.steamAppIdsFor', () => {
       [7, 730],
     ]);
   });
+
+  it('pagina a resposta: jogos com muitos vínculos não ficam sem App ID', async () => {
+    const bodies: string[] = [];
+    const igdb: IgdbClient = {
+      query: vi.fn(async (_endpoint: string, body: string) => {
+        bodies.push(body);
+        // 1ª página cheia (500 linhas do jogo 1), 2ª com o jogo 2.
+        if (body.includes('offset 0;')) return Array.from({ length: 500 }, (_, i) => ({ uid: String(100 + i), game: 1 }));
+        return [{ uid: '730', game: 2 }];
+      }) as IgdbClient['query'],
+    };
+    const result = await createIgdbLookup(igdb).steamAppIdsFor([1, 2]);
+    expect(result.get(1)).toBe(100);
+    expect(result.get(2)).toBe(730);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toContain('offset 500;');
+  });
 });

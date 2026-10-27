@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createSteamClient, parseAppDetails, parseReviews } from '../src/clients/steam.js';
 import type { SteamApp, SteamAppsRepository } from '../src/db/steamAppsRepository.js';
 import { UpstreamError } from '../src/lib/errors.js';
-import { createSteamSync, STEAM_STALE_MS } from '../src/services/steamSync.js';
+import { createSteamSync, STEAM_STALE_MS, MISSING_REVIEWS_RETRY_MS } from '../src/services/steamSync.js';
 import { fakeClock, jsonResponse } from './helpers.js';
 import { steamApp } from './stubs.js';
 
@@ -108,6 +108,31 @@ describe('steamSync', () => {
 
     const { pending } = await sync.read([1, 2, 3, 4]);
     expect(pending).toBe(1);
+  });
+
+  it('com needReviews, rebusca quem está no banco sem avaliações há mais de 1 h', async () => {
+    const clock = fakeClock();
+    const now = new Date(clock.now());
+    const hourAgo = new Date(clock.now() - MISSING_REVIEWS_RETRY_MS - 1);
+    const repo = memoryRepo([
+      steamApp(1, { fetchedAt: hourAgo, reviews: null }), // sem avaliações: volta
+      steamApp(2, { fetchedAt: now, reviews: null }), // recente: espera
+      steamApp(3, { fetchedAt: hourAgo, reviews: { total: 900, percent: 90 } }), // completo
+      steamApp(4, { fetchedAt: hourAgo, found: false, reviews: null }), // fora da loja
+    ]);
+    const order: number[] = [];
+    const sync = createSteamSync({
+      steam: { appDetails: async (id) => (order.push(id), steamApp(id, { fetchedAt: now })) },
+      repo,
+      now: clock.now,
+      sleep: async () => {},
+    });
+    await sync.refresh([1, 2, 3, 4]);
+    await sync.idle();
+    expect(order).toEqual([]);
+    await sync.refresh([1, 2, 3, 4], 'high', { needReviews: true });
+    await sync.idle();
+    expect(order).toEqual([1]);
   });
 
   it('jogos de alta prioridade passam na frente da fila lenta', async () => {
