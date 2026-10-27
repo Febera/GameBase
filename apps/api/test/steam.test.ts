@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createSteamClient, parseAppDetails, parseReviews } from '../src/clients/steam.js';
+import { createSteamClient, parseAppDetails, parseReviews, REVIEW_PAUSE_MS } from '../src/clients/steam.js';
 import type { SteamApp, SteamAppsRepository } from '../src/db/steamAppsRepository.js';
 import { UpstreamError } from '../src/lib/errors.js';
 import { createSteamSync, STEAM_STALE_MS, MISSING_REVIEWS_RETRY_MS } from '../src/services/steamSync.js';
@@ -64,6 +64,42 @@ describe('createSteamClient', () => {
     expect(url).toContain('cc=br');
     expect(url).not.toContain('filters');
     expect(app).toMatchObject({ appId: 42, found: false });
+  });
+
+  it('avaliações: pula variantes que voltam em HTML e memoriza a que funciona', async () => {
+    const html = () => new Response('<!DOCTYPE html><html></html>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+    const reviewUrls: string[] = [];
+    const fetchFn = vi.fn(async (url: string) => {
+      if (url.includes('/appdetails')) return jsonResponse({ [url.match(/appids=(\d+)/)![1]!]: { success: true, data: { is_free: false } } });
+      reviewUrls.push(url);
+      return url.includes('num_per_page=1') ? html() : jsonResponse({ success: 1, query_summary: { total_positive: 900, total_reviews: 1000 } });
+    });
+    const log = vi.fn();
+    const client = createSteamClient({ fetchFn: fetchFn as unknown as typeof fetch, log });
+    expect((await client.appDetails(1)).reviews).toEqual({ total: 1000, percent: 90 });
+    expect(reviewUrls).toHaveLength(2); // 1ª variante em HTML, 2ª em JSON
+    reviewUrls.length = 0;
+    await client.appDetails(2);
+    expect(reviewUrls).toHaveLength(1); // já começa pela que funcionou
+    expect(reviewUrls[0]).toContain('cursor=*');
+  });
+
+  it('avaliações: sem nenhuma variante em JSON, desliga a consulta direta por 6 h', async () => {
+    const clock = fakeClock();
+    let reviewCalls = 0;
+    const fetchFn = vi.fn(async (url: string) => {
+      if (url.includes('/appdetails')) return jsonResponse({ [url.match(/appids=(\d+)/)![1]!]: { success: true, data: { is_free: false } } });
+      reviewCalls++;
+      return new Response('<html></html>', { status: 200 });
+    });
+    const client = createSteamClient({ fetchFn: fetchFn as unknown as typeof fetch, now: clock.now });
+    expect((await client.appDetails(1)).reviews).toBeNull();
+    expect(reviewCalls).toBe(3);
+    await client.appDetails(2);
+    expect(reviewCalls).toBe(3); // pausada
+    clock.advance(REVIEW_PAUSE_MS + 1);
+    await client.appDetails(3);
+    expect(reviewCalls).toBe(6);
   });
 
   it('transforma erros HTTP em UpstreamError', async () => {

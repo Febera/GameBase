@@ -70,6 +70,25 @@ export function parseReviews(summary: ReviewSummary | null): SteamApp['reviews']
   return { total, percent: Math.round(((summary.total_positive ?? 0) / total) * 100) };
 }
 
+/**
+ * Formatos da consulta de avaliações, tentados em ordem até um responder JSON. A Steam devolve
+ * a página HTML da loja quando não aceita os parâmetros (ex.: num_per_page=0).
+ */
+const REVIEW_URL_VARIANTS: ((appId: number) => string)[] = [
+  (id) =>
+    `https://store.steampowered.com/appreviews/${id}?json=1&filter=all&language=all&purchase_type=all&num_per_page=1`,
+  (id) =>
+    `https://store.steampowered.com/appreviews/${id}?json=1&filter=all&language=all&review_type=all&purchase_type=all&day_range=9223372036854775807&cursor=*&num_per_page=20`,
+  (id) => `https://store.steampowered.com/appreviews/${id}?json=1`,
+];
+const REVIEW_HEADERS = {
+  Accept: 'application/json',
+  // Sem um navegador "conhecido", a Steam às vezes responde com a página da loja.
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) GameBase',
+};
+/** Pausa da consulta direta quando nenhuma variante funciona. */
+export const REVIEW_PAUSE_MS = 6 * 60 * 60 * 1000;
+
 export function createSteamClient({
   fetchFn = fetch,
   now = systemClock,
@@ -84,35 +103,52 @@ export function createSteamClient({
     }
   }
 
+  /** Variante que respondeu JSON por último (começa pela primeira da lista). */
+  let variant = 0;
+  /** Quando nenhuma variante funciona, a consulta direta fica desligada até este instante. */
+  let pausedUntil = 0;
+
   async function reviewSummary(appId: number): Promise<ReviewSummary | null> {
+    if (now() < pausedUntil) return null;
+    // Começa pela variante que funcionou da última vez; as outras só se ela vier em HTML.
+    const order = [variant, ...REVIEW_URL_VARIANTS.keys()].filter((v, i, all) => all.indexOf(v) === i);
     try {
-      const res = await fetchFn(
-        `https://store.steampowered.com/appreviews/${appId}?json=1&language=all&purchase_type=all&num_per_page=0`,
-        { headers: { Accept: 'application/json' } },
+      for (const v of order) {
+        const res = await fetchFn(REVIEW_URL_VARIANTS[v]!(appId), { headers: REVIEW_HEADERS });
+        if (res.status === 429 || res.status === 403) {
+          throw new UpstreamError('steam', res.status, `A Steam respondeu HTTP ${res.status}.`);
+        }
+        if (!res.ok) {
+          reviewFailed(appId, `HTTP ${res.status}`);
+          return null;
+        }
+        const text = await res.text();
+        let body: { success?: number; query_summary?: ReviewSummary };
+        try {
+          body = JSON.parse(text) as typeof body;
+        } catch {
+          continue; // Página HTML: a Steam não aceitou esta variante; tenta a próxima.
+        }
+        if (v !== variant) {
+          variant = v;
+          log(`Steam: avaliações passaram a usar a variante ${v + 1} da consulta.`);
+        }
+        if (!body.success || !body.query_summary) {
+          reviewFailed(appId, `success=${String(body.success)}, query_summary ${body.query_summary ? 'presente' : 'ausente'}`);
+          return null;
+        }
+        if (body.query_summary.total_reviews === undefined) {
+          reviewFailed(appId, `query_summary sem total_reviews (campos: ${Object.keys(body.query_summary).join(', ')})`);
+        }
+        return body.query_summary;
+      }
+      // Todas vieram em HTML: desliga por um tempo e deixa a reserva (ITAD) cuidar disso.
+      pausedUntil = now() + REVIEW_PAUSE_MS;
+      log(
+        `Steam: nenhuma variante da consulta de avaliações respondeu JSON (app ${appId}); ` +
+          `consulta direta desligada por ${REVIEW_PAUSE_MS / 3_600_000} h, usando a reserva.`,
       );
-      if (res.status === 429 || res.status === 403) {
-        throw new UpstreamError('steam', res.status, `A Steam respondeu HTTP ${res.status}.`);
-      }
-      if (!res.ok) {
-        reviewFailed(appId, `HTTP ${res.status}`);
-        return null;
-      }
-      const text = await res.text();
-      let body: { success?: number; query_summary?: ReviewSummary };
-      try {
-        body = JSON.parse(text) as typeof body;
-      } catch {
-        reviewFailed(appId, `resposta não é JSON: ${text.slice(0, 80).replace(/\s+/g, ' ')}`);
-        return null;
-      }
-      if (!body.success || !body.query_summary) {
-        reviewFailed(appId, `success=${String(body.success)}, query_summary ${body.query_summary ? 'presente' : 'ausente'}`);
-        return null;
-      }
-      if (body.query_summary.total_reviews === undefined) {
-        reviewFailed(appId, `query_summary sem total_reviews (campos: ${Object.keys(body.query_summary).join(', ')})`);
-      }
-      return body.query_summary;
+      return null;
     } catch (error) {
       if (error instanceof UpstreamError) throw error;
       reviewFailed(appId, String(error));
