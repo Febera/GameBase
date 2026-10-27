@@ -277,6 +277,10 @@ export interface RecommendationEntry {
   /** Tem demo grátis na Steam. */
   hasDemo: boolean;
   players: PlayerCounts | null;
+  /** Imagem larga (arte ou screenshot da IGDB), para o destaque da home. */
+  artwork?: string | null;
+  /** Gêneros pela IGDB. */
+  genres?: string[];
   upvotes: number;
   removeVotes: number;
   /** Se quem está vendo (pelo IP) já apoiou / pediu remoção. */

@@ -47,6 +47,11 @@
   --accent-paid: #ff5fa8;
   /* Texto sobre etiquetas coloridas */
   --on-accent: #121212;
+  /* Dourado do placar do grupo (texto e detalhes) */
+  --gold-ink: #f3d27a;
+  /* Ilustração de traço das seções da home e textura da página */
+  --art-opacity: 0.13;
+  --grain-opacity: 0.05;
 }
 
 @media (prefers-color-scheme: light) {
@@ -88,6 +93,9 @@
   --accent-demo: #6d4bf2;
   --accent-paid: #d0256f;
   --on-accent: #ffffff;
+  --gold-ink: #9a6a0a;
+  --art-opacity: 0.16;
+  --grain-opacity: 0.035;
 }
 
 /* Bordas menos arredondadas em todo o site (círculos continuam com rounded-full). */
@@ -199,6 +207,20 @@
   }
   to {
     translate: 220% 0;
+  }
+}
+@keyframes hero-progress {
+  from {
+    scale: 0 1;
+  }
+  to {
+    scale: 1 1;
+  }
+}
+@keyframes hero-copy {
+  from {
+    opacity: 0;
+    translate: 0 8px;
   }
 }
 @keyframes twinkle {
@@ -355,6 +377,122 @@
     }
   }
 
+  /* Imagem com fusão (CrossfadeImage): entra transparente e aparece quando carrega. */
+  .xfade {
+    opacity: 0;
+    transition: opacity 700ms var(--ease-out-quart);
+  }
+  .xfade[data-loaded] {
+    opacity: 1;
+  }
+
+  /*
+   * Ilustração de traço atrás das seções da home (SectionArt): estática, na cor da seção,
+   * quase da cor do fundo e sumindo nas bordas de cima e de baixo.
+   */
+  .section-art {
+    color: var(--accent, var(--muted));
+    opacity: var(--art-opacity);
+    /* Some em 6rem nas pontas (não em %): em seções altas, a área do título continua visível. */
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 6rem, #000 calc(100% - 7rem), transparent);
+    mask-image: linear-gradient(180deg, transparent, #000 6rem, #000 calc(100% - 7rem), transparent);
+  }
+  .section-art * {
+    vector-effect: non-scaling-stroke;
+  }
+  .section-art text {
+    font-family: var(--font-display);
+    font-weight: 800;
+  }
+  /* No destaque sem arte: o pódio dourado, um pouco mais visível. */
+  .section-art.hero-art {
+    color: var(--gold-ink);
+    opacity: calc(var(--art-opacity) * 1.6);
+    -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent);
+    mask-image: linear-gradient(180deg, #000 55%, transparent);
+  }
+
+  /* Destaque da home: a arte some até a cor da página embaixo e à esquerda (onde fica o texto). */
+  .hero-scrim {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--bg) 30%, transparent) 0%, transparent 22%, transparent 45%, var(--bg) 92%),
+      linear-gradient(90deg, color-mix(in srgb, var(--bg) 92%, transparent) 0%, color-mix(in srgb, var(--bg) 55%, transparent) 45%, transparent 75%);
+  }
+  .hero-copy {
+    animation: hero-copy 420ms var(--ease-out-quart) both;
+  }
+  .hero-pick {
+    background: color-mix(in srgb, var(--bg) 35%, transparent);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .hero-pick-active {
+    background: var(--surface);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--gold-ink) 60%, transparent),
+      0 10px 24px -12px rgb(0 0 0 / 0.55);
+  }
+  /* Barra dourada à esquerda do item escolhido. */
+  .hero-pick-active::before {
+    content: '';
+    position: absolute;
+    inset: 0.5rem auto 0.5rem 0;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--gold-ink);
+  }
+  .hero-progress {
+    animation-name: hero-progress;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+  }
+  .hero-empty {
+    background:
+      radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--gold-ink) 22%, transparent), transparent 60%),
+      var(--surface);
+  }
+
+  /*
+   * Cupom de "Grátis por tempo limitado": dois furos no picote, recortados por máscara
+   * (cada metade do cupom tem um círculo transparente na altura do picote).
+   */
+  .ticket {
+    --ticket-stub: 6.6rem;
+    --hole: 8px;
+    --hole-x: calc(var(--ticket-stub) + 1px);
+    -webkit-mask:
+      radial-gradient(circle var(--hole) at var(--hole-x) 0, #0000 98%, #000) top / 100% 51% no-repeat,
+      radial-gradient(circle var(--hole) at var(--hole-x) 100%, #0000 98%, #000) bottom / 100% 51% no-repeat;
+    mask:
+      radial-gradient(circle var(--hole) at var(--hole-x) 0, #0000 98%, #000) top / 100% 51% no-repeat,
+      radial-gradient(circle var(--hole) at var(--hole-x) 100%, #0000 98%, #000) bottom / 100% 51% no-repeat;
+    transition: translate var(--dur-3) var(--ease-out-quart);
+  }
+  .ticket-cover {
+    transition: scale var(--dur-3) var(--ease-out-quart);
+  }
+  @media (hover: hover) {
+    a.ticket:hover {
+      translate: 0 -4px;
+    }
+    a.ticket:hover .ticket-cover {
+      scale: 1.04;
+    }
+  }
+  /* Cupons: mais largos que as capas, 3 por vez no desktop. */
+  .carousel-track.ticket-track {
+    --visible: 1.15;
+  }
+  @media (min-width: 640px) {
+    .carousel-track.ticket-track {
+      --visible: 2.2;
+    }
+  }
+  @media (min-width: 1024px) {
+    .carousel-track.ticket-track {
+      --visible: 3;
+    }
+  }
+
   .wordmark {
     background: linear-gradient(100deg, var(--brand-a), var(--brand-b) 55%, var(--brand-c));
     -webkit-background-clip: text;
@@ -416,3 +554,18 @@
   --muted: #5c5c66;
 }
 
+
+/*
+ * Textura de grão por cima da página toda, bem leve, para o fundo liso não parecer "chapado".
+ * Não captura cliques.
+ */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}

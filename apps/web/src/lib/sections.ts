@@ -1,4 +1,6 @@
 import type { AdultMode, ListSort, NewGamesCategory, Page } from '@rj/shared';
+import { BadgePercent, Flame, Gift, type LucideIcon, Sparkles, Timer } from 'lucide-react';
+import type { ArtKind } from '../components/home/SectionArt';
 import { api, DEFAULT_ORDER, type ListOrder } from './apiClient';
 import { type CardModel, dealToCard, gameToCard, giveawayToCard } from './cards';
 
@@ -10,6 +12,17 @@ export interface SectionDef {
   accent: string;
   /** Carrossel horizontal (25 jogos) ou grade de 5 × 4 (20 jogos). */
   layout: 'carousel' | 'grid';
+  /**
+   * Formato dos cards na home: capas (padrão), cupons horizontais (carrossel) ou
+   * grade com o primeiro jogo em destaque, ocupando 2 × 2.
+   */
+  variant?: 'covers' | 'tickets' | 'featured';
+  /** Ícone ao lado do título. */
+  icon: LucideIcon;
+  /** Uma linha sob o título, dizendo o que entra na lista. */
+  subtitle: string;
+  /** Ilustração de traço atrás da seção, na home. Seções vizinhas com a mesma dividem uma só. */
+  art: ArtKind;
   emptyMessage: string;
   /** Ordenações oferecidas na lista completa (a primeira é a padrão). */
   sorts: ListSort[];
@@ -37,6 +50,10 @@ export const SECTIONS: SectionDef[] = [
     title: 'Grátis por tempo limitado',
     accent: 'var(--accent-free)',
     layout: 'carousel',
+    variant: 'tickets',
+    icon: Gift,
+    art: 'offers',
+    subtitle: 'Resgate enquanto durar e o jogo fica na sua conta',
     emptyMessage: 'Nenhum jogo de PC está sendo dado de graça agora. Volte em alguns dias.',
     // Todos estão a 100%: no lugar de "desconto", o valor original.
     sorts: ['reviews', 'value', 'release'],
@@ -48,6 +65,9 @@ export const SECTIONS: SectionDef[] = [
     title: 'Grandes ofertas',
     accent: 'var(--accent-deal)',
     layout: 'carousel',
+    icon: BadgePercent,
+    art: 'offers',
+    subtitle: 'De 70% a 99% de desconto, em reais',
     emptyMessage: 'Nenhum jogo com 70% ou mais de desconto agora.',
     sorts: GAME_SORTS,
     fetchPage: async (offset, limit, adult, order) => mapPage(await api.deals(offset, limit, adult, order), dealToCard),
@@ -57,6 +77,10 @@ export const SECTIONS: SectionDef[] = [
     title: 'Novos populares grátis',
     accent: 'var(--accent-new)',
     layout: 'grid',
+    variant: 'featured',
+    icon: Sparkles,
+    art: 'calendar',
+    subtitle: 'Lançados nos últimos 90 dias, sem pagar nada',
     emptyMessage: 'Nenhum jogo gratuito popular foi lançado nos últimos 90 dias.',
     sorts: GAME_SORTS,
     fetchPage: newGames('free'),
@@ -66,6 +90,9 @@ export const SECTIONS: SectionDef[] = [
     title: 'Novos populares com demo',
     accent: 'var(--accent-demo)',
     layout: 'grid',
+    icon: Timer,
+    art: 'controls',
+    subtitle: 'Lançados nos últimos 90 dias, com demo grátis na Steam',
     emptyMessage: 'Nenhum jogo popular dos últimos 90 dias tem demo na Steam.',
     sorts: GAME_SORTS,
     fetchPage: newGames('demo'),
@@ -75,6 +102,9 @@ export const SECTIONS: SectionDef[] = [
     title: 'Novos populares pagos',
     accent: 'var(--accent-paid)',
     layout: 'grid',
+    icon: Flame,
+    art: 'charts',
+    subtitle: 'Lançados nos últimos 90 dias, os mais avaliados',
     emptyMessage: 'Nenhum jogo pago popular foi lançado nos últimos 90 dias.',
     sorts: GAME_SORTS,
     fetchPage: newGames('paid'),

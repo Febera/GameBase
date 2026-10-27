@@ -16,9 +16,10 @@ export function TopBar() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [focusInside, setFocusInside] = useState(false);
   const hidden = useHideOnScroll(optionsOpen || focusInside);
-  // Páginas com fundo de arte (jogo, oferta) ou dourado (recomendações): barra translúcida e desfocada.
+  // Páginas com fundo de arte (home, jogo, oferta) ou dourado (recomendações): barra translúcida e desfocada.
   const { pathname } = useLocation();
-  const glass = pathname.startsWith('/jogo/') || pathname.startsWith('/oferta/') || pathname === '/recomendacoes';
+  const glass =
+    pathname === '/' || pathname.startsWith('/jogo/') || pathname.startsWith('/oferta/') || pathname === '/recomendacoes';
 
   useEffect(() => {
     const open = () => setOptionsOpen(true);

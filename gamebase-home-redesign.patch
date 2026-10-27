@@ -1,0 +1,1501 @@
+diff --git a/README.md b/README.md
+index 1fe6a7f..432a8e2 100644
+--- a/README.md
++++ b/README.md
+@@ -102,7 +102,10 @@ O critério é "foco em conteúdo sexual": jogos mainstream com cenas pontuais c
+ 
+ ## Como funcionam as seções da home
+ 
+-- **Grátis por tempo limitado** (carrossel, 25 jogos): primeiro os jogos pagos com 100% de
++- **Destaque do grupo** (topo): a arte do 1º do placar de recomendações na largura toda, com nome, gêneros, selos, preço, votos e "Ver jogo". Um seletor ao lado percorre o top 5 sozinho a cada 8 s (pausa com o mouse ou o foco; parado com "reduzir movimento"). Placar vazio: convite para a primeira recomendação. Erro no servidor: o destaque some e o resto da home segue.
++- **Atalhos**: as buscas rápidas da barra do topo, como blocos grandes.
++- Cada seção tem ícone, subtítulo, total ("Ver todos") e um **fundo ambiente**: a capa do primeiro jogo, desfocada e transparente, que muda para a do card sob o mouse.
++- **Grátis por tempo limitado** (carrossel de cupons, 25 jogos): cada jogo vira um cupom com capa, loja, valor original e prazo ("Acaba hoje", "Acaba em 3 dias", "Até 05/11"); o cabeçalho avisa quantos acabam na semana. primeiro os jogos pagos com 100% de
+   desconto na IsThereAnyDeal, do preço original mais alto para o mais baixo; depois os giveaways
+   do GamerPower, por popularidade. O mesmo jogo aparece uma vez só. Os títulos do GamerPower são
+   limpos ("Tunic (Epic Games) Giveaway" → "Tunic") e associados à IGDB para usar a capa vertical.
+@@ -112,7 +115,7 @@ O critério é "foco em conteúdo sexual": jogos mainstream com cenas pontuais c
+   histórico e avaliações da IsThereAnyDeal. A lista é aquecida quando o servidor sobe e, depois,
+   recarregada em segundo plano sem ninguém esperar. Maior desconto primeiro, nota da IGDB no empate. Links e preços aparecem exatamente
+   como a IsThereAnyDeal fornece, como pedem os termos de uso dela.
+-- **Novos populares grátis / com demo / pagos** (grades de 5 × 4, 20 jogos): até 400 jogos
++- **Novos populares grátis / com demo / pagos** (grades de 5 × 4, 20 jogos; em "grátis", o 1º ocupa 2 × 2): até 400 jogos
+   populares lançados nos últimos 90 dias são divididos pelos dados da loja Steam. Pagos que têm
+   demo aparecem só em "com demo". Jogos fora da Steam não entram em nenhuma das três.
+ 
+@@ -251,6 +254,7 @@ Se a Steam pedir para desacelerar, a fila pausa 2 minutos e continua.
+ - [x] Ordenação das listas, avaliações da Steam, duplicatas/edições, card da busca, placar ao vivo
+ - [x] Buscas rápidas e botão Filtros na barra, novo card da busca, barra translúcida na página do jogo
+ - [x] Recomendações em pódio de escada, com preço, DEMO e jogadores
++- [x] Home: destaque do placar do grupo, atalhos, cabeçalhos com ícone, cupons, grade com destaque, fundo ambiente e grão
+ 
+ Resumo das decisões e do contexto do projeto: [`CONTEXTO.md`](CONTEXTO.md).
+ - [ ] Etapa 7: deploy (Cloudflare Pages + Render + Neon)
+diff --git a/apps/api/src/services/recommendationsService.ts b/apps/api/src/services/recommendationsService.ts
+index 7acc31f..f0b6bbe 100644
+--- a/apps/api/src/services/recommendationsService.ts
++++ b/apps/api/src/services/recommendationsService.ts
+@@ -17,7 +17,7 @@ import type { AdultContentFilter } from './adultContent.js';
+ import { playerCounts } from './gameDetailsService.js';
+ import { steamPrice } from './gamesService.js';
+ import type { IgdbLookup } from './igdbLookup.js';
+-import { type IgdbGame, toGameCard } from './igdbMappers.js';
++import { type IgdbGame, igdbImageUrl, toGameCard } from './igdbMappers.js';
+ import type { SteamSync } from './steamSync.js';
+ import type { SteamApp } from '../db/steamAppsRepository.js';
+ 
+@@ -35,6 +35,16 @@ interface Deps {
+ interface Extras {
+   steamAppId: number | null;
+   players: ReturnType<typeof playerCounts>;
++  artwork: string | null;
++  genres: string[];
++}
++
++interface IgdbExtras {
++  id: number;
++  multiplayer_modes?: Parameters<typeof playerCounts>[0];
++  artworks?: { image_id: string }[];
++  screenshots?: { image_id: string }[];
++  genres?: { name: string }[];
+ }
+ const EXTRAS_TTL_MS = 60 * 60 * 1000;
+ 
+@@ -76,14 +86,21 @@ export function createRecommendationsService({ repo, igdb, adult, lookup, steam,
+     try {
+       const [steamIds, modes] = await Promise.all([
+         lookup ? lookup.steamAppIdsFor(missing) : Promise.resolve(new Map<number, number>()),
+-        igdb.query<{ id: number; multiplayer_modes?: Parameters<typeof playerCounts>[0] }>(
++        igdb.query<IgdbExtras>(
+           'games',
+-          `fields multiplayer_modes.platform,multiplayer_modes.onlinemax,multiplayer_modes.onlinecoopmax,multiplayer_modes.offlinemax,multiplayer_modes.offlinecoopmax; where id = (${missing.join(',')}); limit 500;`,
++          `fields multiplayer_modes.platform,multiplayer_modes.onlinemax,multiplayer_modes.onlinecoopmax,multiplayer_modes.offlinemax,multiplayer_modes.offlinecoopmax,artworks.image_id,screenshots.image_id,genres.name; where id = (${missing.join(',')}); limit 500;`,
+         ),
+       ]);
+-      const playersById = new Map(modes.map((g) => [g.id, playerCounts(g.multiplayer_modes)]));
++      const byId = new Map(modes.map((g) => [g.id, g]));
+       for (const id of missing) {
+-        const extras = { steamAppId: steamIds.get(id) ?? null, players: playersById.get(id) ?? null };
++        const game = byId.get(id);
++        const wide = game?.artworks?.[0]?.image_id ?? game?.screenshots?.[0]?.image_id;
++        const extras: Extras = {
++          steamAppId: steamIds.get(id) ?? null,
++          players: game ? playerCounts(game.multiplayer_modes) : null,
++          artwork: wide ? igdbImageUrl(wide, '1080p') : null,
++          genres: game?.genres?.map((g) => g.name) ?? [],
++        };
+         cache?.set(`rec-extras:${id}`, extras, EXTRAS_TTL_MS);
+         result.set(id, extras);
+       }
+@@ -113,6 +130,8 @@ export function createRecommendationsService({ repo, igdb, adult, lookup, steam,
+       return {
+         ...entry,
+         players: x?.players ?? null,
++        artwork: x?.artwork ?? null,
++        genres: x?.genres ?? [],
+         hasDemo: Boolean(app?.found && !app.isFree && app.hasDemo),
+         game: app?.found ? { ...entry.game, free: app.isFree, price: steamPrice(app) } : entry.game,
+       };
+diff --git a/apps/api/test/recommendations.test.ts b/apps/api/test/recommendations.test.ts
+index d5fc47b..2db75ec 100644
+--- a/apps/api/test/recommendations.test.ts
++++ b/apps/api/test/recommendations.test.ts
+@@ -174,6 +174,25 @@ describe('serviço de recomendações', () => {
+     expect(second).toMatchObject({ hasDemo: false, players: null, game: { free: true } });
+   });
+ 
++  it('traz a arte larga (arte, senão screenshot) e os gêneros de cada jogo', async () => {
++    const repo = memoryRepo();
++    await repo.recommend(game(1), 'a');
++    await repo.recommend(game(2), 'a');
++    await repo.recommend(game(3), 'a');
++    const igdbArt: IgdbClient = {
++      query: vi.fn(async () => [
++        { id: 1, artworks: [{ image_id: 'art1' }], screenshots: [{ image_id: 'shot1' }], genres: [{ name: 'Shooter' }] },
++        { id: 2, screenshots: [{ image_id: 'shot2' }] },
++      ]) as IgdbClient['query'],
++    };
++    const service = createRecommendationsService({ repo, igdb: igdbArt, adult: adultFilter(), cache: new MemoryCache() });
++    const entries = (await service.board('a', 'hide')).entries;
++    const byId = new Map(entries.map((e) => [e.game.id, e]));
++    expect(byId.get(1)).toMatchObject({ artwork: expect.stringContaining('t_1080p/art1.jpg'), genres: ['Shooter'] });
++    expect(byId.get(2)?.artwork).toContain('t_1080p/shot2.jpg');
++    expect(byId.get(3)).toMatchObject({ artwork: null, genres: [] });
++  });
++
+   it('sem banco, explica o problema', async () => {
+     const service = createRecommendationsService({ repo: null, igdb, adult: adultFilter() });
+     await expect(service.board('a', 'hide')).rejects.toBeInstanceOf(MissingConfigError);
+diff --git a/apps/web/src/components/game/Card.tsx b/apps/web/src/components/game/Card.tsx
+index 5b662b4..5c7c483 100644
+--- a/apps/web/src/components/game/Card.tsx
++++ b/apps/web/src/components/game/Card.tsx
+@@ -1,9 +1,10 @@
+-import type { PointerEvent } from 'react';
++import type { PointerEvent, ReactNode } from 'react';
+ import { Link } from 'react-router';
+ import type { CardModel } from '../../lib/cards';
+ 
+ interface Props {
+   card: CardModel;
++  featured?: boolean;
+ }
+ 
+ /** Inclinação máxima da capa, em graus, quando o mouse está na borda. */
+@@ -27,16 +28,20 @@ function onLeave(event: PointerEvent<HTMLElement>) {
+   tilt?.style.setProperty('--ry', '0deg');
+ }
+ 
+-/**
+- * Card de jogo: capa com o nome no canto inferior direito.
+- * Ofertas e giveaways acrescentam uma etiqueta (desconto, prazo) e preço/loja sob o nome.
+- * A cor da etiqueta vem da variável --accent da seção.
+- */
+-export function Card({ card }: Props) {
+-  const className = 'card-link group block rounded-md';
+-  const content = <CardContent card={card} />;
+-  const handlers = { onPointerMove: onMove, onPointerLeave: onLeave };
+-
++/** Link de um card: página do GameBase, ou nova aba quando o destino é fora do site. */
++export function CardAnchor({
++  card,
++  className,
++  children,
++  tilt = false,
++}: {
++  card: CardModel;
++  className: string;
++  children: ReactNode;
++  /** Liga a inclinação da capa pela posição do mouse. */
++  tilt?: boolean;
++}) {
++  const handlers = tilt ? { onPointerMove: onMove, onPointerLeave: onLeave } : {};
+   return card.external ? (
+     <a
+       href={card.href}
+@@ -46,24 +51,44 @@ export function Card({ card }: Props) {
+       className={className}
+       {...handlers}
+     >
+-      {content}
++      {children}
+     </a>
+   ) : (
+     <Link to={card.href} aria-label={card.label} className={className} {...handlers}>
+-      {content}
++      {children}
+     </Link>
+   );
+ }
+ 
+-function CardContent({ card }: Props) {
++/**
++ * Card de jogo: capa com o nome no canto inferior direito.
++ * Ofertas e giveaways acrescentam uma etiqueta (desconto, prazo) e preço/loja sob o nome.
++ * A cor da etiqueta vem da variável --accent da seção.
++ * Com `featured`, o card ocupa a altura da célula (grade com o primeiro jogo em 2 × 2).
++ */
++export function Card({ card, featured = false }: Props) {
++  return (
++    <CardAnchor card={card} tilt className={`card-link group block rounded-md ${featured ? 'md:h-full' : ''}`}>
++      <CardContent card={card} featured={featured} />
++    </CardAnchor>
++  );
++}
++
++function CardContent({ card, featured = false }: Props) {
+   const hasDetails = Boolean(card.price || card.note);
+   const image = card.cover ?? (card.fallbackImage ? { url: card.fallbackImage, url2x: card.fallbackImage } : null);
+   return (
+-    <div className="card-tilt relative aspect-[264/374] overflow-hidden rounded-md bg-surface-2 ring-1 ring-line">
++    <div
++      className={[
++        'card-tilt relative aspect-[264/374] overflow-hidden rounded-md bg-surface-2 ring-1 ring-line',
++        featured ? 'md:aspect-auto md:h-full' : '',
++      ].join(' ')}
++    >
+       {image ? (
+         <img
+-          src={image.url}
+-          srcSet={image.url2x !== image.url ? `${image.url} 1x, ${image.url2x} 2x` : undefined}
++          // No destaque a capa fica com o dobro do tamanho: já começa na versão grande.
++          src={featured ? image.url2x : image.url}
++          srcSet={!featured && image.url2x !== image.url ? `${image.url} 1x, ${image.url2x} 2x` : undefined}
+           alt=""
+           loading="lazy"
+           decoding="async"
+@@ -93,7 +118,11 @@ function CardContent({ card }: Props) {
+       )}
+ 
+       <div className="absolute inset-x-3 bottom-2.5 text-right text-white">
+-        <span className="line-clamp-2 font-display text-[0.95rem] font-semibold leading-tight">{card.title}</span>
++        <span
++          className={`line-clamp-2 font-display font-semibold leading-tight ${featured ? 'text-[0.95rem] md:text-2xl md:font-bold' : 'text-[0.95rem]'}`}
++        >
++          {card.title}
++        </span>
+         {card.price && (
+           <p className="mt-1 text-sm leading-tight">
+             {card.price.previous && <s className="mr-1.5 text-xs text-white/60 tabular-nums">{card.price.previous}</s>}
+@@ -106,6 +135,6 @@ function CardContent({ card }: Props) {
+   );
+ }
+ 
+-export function CardSkeleton() {
+-  return <div aria-hidden className="skeleton aspect-[264/374] rounded-md" />;
++export function CardSkeleton({ featured = false }: { featured?: boolean }) {
++  return <div aria-hidden className={`skeleton aspect-[264/374] rounded-md ${featured ? 'md:aspect-auto md:h-full' : ''}`} />;
+ }
+diff --git a/apps/web/src/components/game/CardRow.tsx b/apps/web/src/components/game/CardRow.tsx
+index 184b758..750480c 100644
+--- a/apps/web/src/components/game/CardRow.tsx
++++ b/apps/web/src/components/game/CardRow.tsx
+@@ -10,26 +10,46 @@ interface Props {
+   loading?: boolean;
+   /** Conteúdo exibido abaixo do trilho (avisos). */
+   children?: ReactNode;
++  /** Desenho de cada card (padrão: capa). */
++  renderCard?: (card: CardModel) => ReactNode;
++  /** Esqueleto enquanto carrega (padrão: capa). */
++  skeleton?: ReactNode;
++  /** Classe extra do trilho, para outros formatos de card (ex.: cupons, 3 por vez). */
++  trackClassName?: string;
++  /** Imagem do fundo ambiente de cada card (atributo data-ambient). */
++  ambientOf?: (card: CardModel) => string | undefined;
+ }
+ 
++const defaultRender = (card: CardModel) => <Card card={card} />;
++
+ /** Faixa horizontal de cards, 5 visíveis no desktop, com setas nas extremidades. */
+-export function CardRow({ heading, cards, loading = false, children }: Props) {
++export function CardRow({
++  heading,
++  cards,
++  loading = false,
++  children,
++  renderCard = defaultRender,
++  skeleton = <CardSkeleton />,
++  trackClassName = '',
++  ambientOf,
++}: Props) {
+   const track = useRef<HTMLUListElement>(null);
+ 
+   return (
+     <>
+       <div className="mb-4">{heading}</div>
+       <div className="relative">
+-        <ul ref={track} className="carousel-track pb-1">
++        <ul ref={track} className={`carousel-track pb-1 ${trackClassName}`}>
+           {loading || !cards
+-            ? Array.from({ length: 5 }, (_, i) => (
+-                <li key={i}>
+-                  <CardSkeleton />
+-                </li>
+-              ))
++            ? Array.from({ length: 5 }, (_, i) => <li key={i}>{skeleton}</li>)
+             : cards.map((card, i) => (
+-                <li key={card.key} className="reveal" style={{ '--i': i } as CSSProperties}>
+-                  <Card card={card} />
++                <li
++                  key={card.key}
++                  className="reveal"
++                  data-ambient={ambientOf?.(card)}
++                  style={{ '--i': i } as CSSProperties}
++                >
++                  {renderCard(card)}
+                 </li>
+               ))}
+         </ul>
+diff --git a/apps/web/src/components/game/GameCarousel.tsx b/apps/web/src/components/game/GameCarousel.tsx
+index b6cc432..1d2c426 100644
+--- a/apps/web/src/components/game/GameCarousel.tsx
++++ b/apps/web/src/components/game/GameCarousel.tsx
+@@ -1,9 +1,12 @@
+-import { ChevronRight } from 'lucide-react';
+ import type { CSSProperties } from 'react';
+-import { Link } from 'react-router';
+ import { useSectionPreview } from '../../hooks/useSectionGames';
+ import { useSlowLoading } from '../../hooks/useSlowLoading';
++import { ambientImage } from '../../lib/ambient';
++import { endsSoon } from '../../lib/cards';
+ import { PREVIEW_SIZE, type SectionDef } from '../../lib/sections';
++import { SectionAmbient, useSectionAmbient } from '../home/SectionAmbient';
++import { SectionHeader } from '../home/SectionHeader';
++import { TicketCard, TicketSkeleton } from '../home/TicketCard';
+ import { ErrorState } from '../ui/ErrorState';
+ import { SlowServerNote } from '../ui/SlowServerNote';
+ import { CardRow } from './CardRow';
+@@ -13,34 +16,56 @@ export function GameCarousel({ section }: { section: SectionDef }) {
+   const { data, isPending, isError, error, refetch } = useSectionPreview(section);
+   const slow = useSlowLoading(isPending);
+   const headingId = `secao-${section.slug}`;
++  const cards = data?.items.slice(0, PREVIEW_SIZE.carousel);
++  const ambient = useSectionAmbient(ambientImage(cards?.[0]) ?? null);
++  const tickets = section.variant === 'tickets';
++
++  // Nos cupons, quantos terminam nos próximos 7 dias (entre os que aparecem na home).
++  const soon = tickets && cards ? cards.filter((card) => endsSoon(card.endsAt)).length : 0;
++  const highlight = soon > 0 ? (soon === 1 ? '1 acaba esta semana' : `${soon} acabam esta semana`) : null;
+ 
+   const heading = (
+-    <h2 id={headingId} className="font-display text-2xl font-bold tracking-tight md:text-3xl">
+-      <Link to={`/secao/${section.slug}`} className="group inline-flex items-center gap-3">
+-        <span aria-hidden className="h-7 w-1.5 rounded-full bg-[var(--accent)]" />
+-        <span className="transition-colors group-hover:text-[var(--accent)]">{section.title}</span>
+-        <ChevronRight
+-          aria-hidden
+-          className="size-6 text-muted transition-transform group-hover:translate-x-1 group-hover:text-[var(--accent)]"
+-        />
+-      </Link>
+-    </h2>
++    <SectionHeader
++      id={headingId}
++      href={`/secao/${section.slug}`}
++      title={section.title}
++      subtitle={section.subtitle}
++      icon={section.icon}
++      total={data?.total}
++      highlight={highlight}
++    />
+   );
+ 
+   return (
+-    <section aria-labelledby={headingId} className="mb-14" style={{ '--accent': section.accent } as CSSProperties}>
++    <section
++      aria-labelledby={headingId}
++      className="relative isolate mb-16"
++      style={{ '--accent': section.accent } as CSSProperties}
++      {...ambient.handlers}
++    >
++      <SectionAmbient src={ambient.src} />
+       {isError ? (
+         <>
+-          <div className="mb-4">{heading}</div>
++          {heading}
+           <ErrorState message={error.message} onRetry={() => void refetch()} />
+         </>
+       ) : data && data.items.length === 0 ? (
+         <>
+-          <div className="mb-4">{heading}</div>
+-          <p className="rounded-xl border border-dashed border-line px-5 py-8 text-muted">{section.emptyMessage}</p>
++          {heading}
++          <p className="rounded-md border border-dashed border-line px-5 py-8 text-muted">{section.emptyMessage}</p>
+         </>
+       ) : (
+-        <CardRow heading={heading} cards={data?.items.slice(0, PREVIEW_SIZE.carousel)} loading={isPending}>
++        <CardRow
++          heading={heading}
++          cards={cards}
++          loading={isPending}
++          ambientOf={ambientImage}
++          {...(tickets && {
++            renderCard: (card) => <TicketCard card={card} />,
++            skeleton: <TicketSkeleton />,
++            trackClassName: 'ticket-track',
++          })}
++        >
+           {slow && <SlowServerNote />}
+         </CardRow>
+       )}
+diff --git a/apps/web/src/components/game/GameGridSection.tsx b/apps/web/src/components/game/GameGridSection.tsx
+index 106dfc5..0e7b704 100644
+--- a/apps/web/src/components/game/GameGridSection.tsx
++++ b/apps/web/src/components/game/GameGridSection.tsx
+@@ -3,58 +3,83 @@ import type { CSSProperties } from 'react';
+ import { Link } from 'react-router';
+ import { useSectionPreview } from '../../hooks/useSectionGames';
+ import { useSlowLoading } from '../../hooks/useSlowLoading';
++import { ambientImage } from '../../lib/ambient';
+ import { PREVIEW_SIZE, type SectionDef } from '../../lib/sections';
++import { SectionAmbient, useSectionAmbient } from '../home/SectionAmbient';
++import { SectionHeader } from '../home/SectionHeader';
+ import { ErrorState } from '../ui/ErrorState';
+ import { PendingNote } from '../ui/PendingNote';
+ import { SlowServerNote } from '../ui/SlowServerNote';
+ import { Card, CardSkeleton } from './Card';
+ 
++/**
++ * Quantos itens a grade com destaque mostra. O 1º ocupa 2 × 2: de 768px para cima, 17 jogos
++ * fecham 4 colunas × 5 linhas ou 5 × 4. O 18º só aparece abaixo disso (2 e 3 colunas).
++ */
++const FEATURED_COUNT = 18;
++
+ /** Grade de 5 colunas × 4 linhas, com "Ver mais" no fim levando à lista completa. */
+ export function GameGridSection({ section }: { section: SectionDef }) {
+   const { data, isPending, isError, error, refetch } = useSectionPreview(section);
+   const slow = useSlowLoading(isPending);
+   const headingId = `secao-${section.slug}`;
+   const href = `/secao/${section.slug}`;
+-  const size = PREVIEW_SIZE.grid;
++  const featured = section.variant === 'featured';
++  const size = featured ? FEATURED_COUNT : PREVIEW_SIZE.grid;
++  const cards = data?.items.slice(0, size);
++  const ambient = useSectionAmbient(ambientImage(cards?.[0]) ?? null);
++
++  /** No destaque: o 1º em 2 × 2 e o último só nas telas estreitas. */
++  const cellClass = (i: number) =>
++    featured ? (i === 0 ? 'md:col-span-2 md:row-span-2' : i === size - 1 ? 'md:hidden' : '') : '';
+ 
+   return (
+-    <section aria-labelledby={headingId} className="mb-16" style={{ '--accent': section.accent } as CSSProperties}>
+-      <h2 id={headingId} className="mb-4 font-display text-2xl font-bold tracking-tight md:text-3xl">
+-        <Link to={href} className="group inline-flex items-center gap-3">
+-          <span aria-hidden className="h-7 w-1.5 rounded-full bg-[var(--accent)]" />
+-          <span className="transition-colors group-hover:text-[var(--accent)]">{section.title}</span>
+-          <ChevronRight
+-            aria-hidden
+-            className="size-6 text-muted transition-transform group-hover:translate-x-1 group-hover:text-[var(--accent)]"
+-          />
+-        </Link>
+-      </h2>
++    <section
++      aria-labelledby={headingId}
++      className="relative isolate mb-16"
++      style={{ '--accent': section.accent } as CSSProperties}
++      {...ambient.handlers}
++    >
++      <SectionAmbient src={ambient.src} />
++      <SectionHeader
++        id={headingId}
++        href={href}
++        title={section.title}
++        subtitle={section.subtitle}
++        icon={section.icon}
++        total={data?.total}
++      />
+ 
+       {isError ? (
+         <ErrorState message={error.message} onRetry={() => void refetch()} />
+       ) : data && data.items.length === 0 ? (
+         <>
+-          <p className="rounded-xl border border-dashed border-line px-5 py-8 text-muted">{section.emptyMessage}</p>
++          <p className="rounded-md border border-dashed border-line px-5 py-8 text-muted">{section.emptyMessage}</p>
+           <PendingNote count={data.pending ?? 0} />
+         </>
+       ) : (
+         <>
+           <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 lg:gap-5">
+-            {isPending
++            {isPending || !cards
+               ? Array.from({ length: size }, (_, i) => (
+-                  <li key={i}>
+-                    <CardSkeleton />
++                  <li key={i} className={cellClass(i)}>
++                    <CardSkeleton featured={featured && i === 0} />
+                   </li>
+                 ))
+-              : data.items.slice(0, size).map((card, i) => (
+-                  <li key={card.key} className="reveal" style={{ '--i': i } as CSSProperties}>
+-                    <Card card={card} />
++              : cards.map((card, i) => (
++                  <li
++                    key={card.key}
++                    className={`reveal ${cellClass(i)}`}
++                    data-ambient={ambientImage(card)}
++                    style={{ '--i': i } as CSSProperties}
++                  >
++                    <Card card={card} featured={featured && i === 0} />
+                   </li>
+                 ))}
+           </ul>
+           {slow && <SlowServerNote />}
+           {data && <PendingNote count={data.pending ?? 0} />}
+-          {data && data.total > size && (
++          {data && data.total > (cards?.length ?? 0) && (
+             <div className="mt-4 text-right">
+               <Link
+                 to={href}
+diff --git a/apps/web/src/components/home/CrossfadeImage.tsx b/apps/web/src/components/home/CrossfadeImage.tsx
+new file mode 100644
+index 0000000..b48cd1d
+--- /dev/null
++++ b/apps/web/src/components/home/CrossfadeImage.tsx
+@@ -0,0 +1,43 @@
++import { useEffect, useRef, useState } from 'react';
++
++interface Props {
++  src: string | null;
++  /** Classes do contêiner (posicionamento). */
++  className?: string;
++  /** Classes de cada imagem (object-fit, filtros). */
++  imgClassName?: string;
++}
++
++/**
++ * Imagem que troca com fusão: a nova entra por cima, transparente, e só aparece depois de
++ * carregada; quando termina de aparecer, as anteriores saem. Assim nunca pisca em branco.
++ */
++export function CrossfadeImage({ src, className = '', imgClassName = '' }: Props) {
++  const [layers, setLayers] = useState<{ src: string; id: number }[]>(() => (src ? [{ src, id: 0 }] : []));
++  const nextId = useRef(1);
++
++  useEffect(() => {
++    if (!src) return;
++    setLayers((current) =>
++      current.at(-1)?.src === src ? current : [...current.slice(-1), { src, id: nextId.current++ }],
++    );
++  }, [src]);
++
++  return (
++    <div aria-hidden className={`overflow-hidden ${className}`}>
++      {layers.map((layer, i) => (
++        <img
++          key={layer.id}
++          src={layer.src}
++          alt=""
++          decoding="async"
++          className={`xfade absolute inset-0 size-full ${imgClassName}`}
++          onLoad={(event) => {
++            event.currentTarget.dataset.loaded = '';
++          }}
++          onTransitionEnd={i === layers.length - 1 ? () => setLayers((current) => current.slice(-1)) : undefined}
++        />
++      ))}
++    </div>
++  );
++}
+diff --git a/apps/web/src/components/home/GroupHero.tsx b/apps/web/src/components/home/GroupHero.tsx
+new file mode 100644
+index 0000000..0ba31cb
+--- /dev/null
++++ b/apps/web/src/components/home/GroupHero.tsx
+@@ -0,0 +1,225 @@
++import type { RecommendationEntry } from '@rj/shared';
++import { Megaphone, ThumbsUp, Trophy } from 'lucide-react';
++import { type CSSProperties, useState } from 'react';
++import { Link } from 'react-router';
++import { useBoard } from '../../hooks/useRecommendations';
++import { useReducedMotion } from '../../hooks/useReducedMotion';
++import { VoteButtons } from '../recommendations/VoteButtons';
++import { CompactPrice } from '../ui/CompactPrice';
++import { DemoTag, PlayersTag } from '../ui/GameTags';
++import { CrossfadeImage } from './CrossfadeImage';
++
++/** Quantos jogos do placar o destaque percorre. */
++const TOP = 5;
++/** Tempo de cada jogo no destaque (a barra de progresso no seletor usa o mesmo valor). */
++const ROTATE_MS = 8000;
++
++/**
++ * Abertura da home: o placar do grupo em destaque. A arte do jogo ocupa o topo da tela,
++ * na largura toda, e o seletor ao lado percorre o top 5 sozinho (pausa com o mouse ou o foco
++ * dentro do destaque; parado para quem pede menos movimento).
++ */
++export function GroupHero() {
++  const { data, isPending, isError } = useBoard();
++  const reducedMotion = useReducedMotion();
++  const [selected, setSelected] = useState(0);
++  const [paused, setPaused] = useState(false);
++
++  // Sem banco ou com o servidor fora, a home segue sem o destaque.
++  if (isError) return null;
++  if (isPending) return <HeroSkeleton />;
++
++  const top = data.entries.slice(0, TOP);
++  if (top.length === 0) return <HeroEmpty />;
++
++  const index = Math.min(selected, top.length - 1);
++  const entry = top[index]!;
++  const { game } = entry;
++  const rotating = !reducedMotion && top.length > 1;
++  const image = entry.artwork ?? game.cover?.url2x ?? null;
++
++  return (
++    <section
++      aria-labelledby="destaque-grupo"
++      className="relative isolate mb-10"
++      onPointerEnter={(event) => event.pointerType === 'mouse' && setPaused(true)}
++      onPointerLeave={() => setPaused(false)}
++      onFocus={() => setPaused(true)}
++      onBlur={(event) => {
++        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPaused(false);
++      }}
++    >
++      {/* Arte na largura toda, passando por baixo da barra do topo. */}
++      <div
++        aria-hidden
++        className="pointer-events-none absolute left-1/2 top-[calc(-5.5rem-env(safe-area-inset-top,0px))] -z-10 h-[calc(100%+9rem)] w-screen -translate-x-1/2"
++      >
++        <CrossfadeImage
++          src={image}
++          className="absolute inset-0"
++          imgClassName={`object-cover object-[center_25%] ${entry.artwork ? '' : 'scale-110 blur-2xl'}`}
++        />
++        <div className="hero-scrim absolute inset-0" />
++      </div>
++
++      <div className="grid min-h-[27rem] grid-cols-1 items-end gap-8 pt-10 md:min-h-[32rem] lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-12">
++        <div key={game.id} className="hero-copy max-w-2xl">
++          <p className="inline-flex items-center gap-2 text-sm font-bold text-[var(--gold-ink)]">
++            <Trophy className="size-4" aria-hidden />
++            {index === 0 ? 'Mais recomendado pelo grupo' : `${index + 1}º no placar do grupo`}
++          </p>
++          <h2
++            id="destaque-grupo"
++            className="mt-3 line-clamp-2 max-w-[18ch] font-display text-[2.6rem] font-extrabold leading-[0.95] tracking-tight text-ink [text-wrap:balance] md:text-[4.25rem]"
++          >
++            <Link to={`/jogo/${game.id}`} className="hover:underline hover:decoration-2 hover:underline-offset-8">
++              {game.name}
++            </Link>
++          </h2>
++          {entry.genres && entry.genres.length > 0 && (
++            <p className="mt-3 text-[0.95rem] text-muted">{entry.genres.slice(0, 3).join(', ')}</p>
++          )}
++          <div className="mt-4 flex flex-wrap items-center gap-2">
++            {entry.hasDemo && <DemoTag />}
++            <PlayersTag players={entry.players} coopFirst />
++          </div>
++          <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
++            <Link
++              to={`/jogo/${game.id}`}
++              className="rounded-md bg-white px-5 py-2.5 font-bold text-black transition hover:brightness-90"
++            >
++              Ver jogo
++            </Link>
++            <span className="text-ink">
++              <CompactPrice game={game} />
++            </span>
++            <VoteButtons entry={entry} threshold={data.removeThreshold} compact />
++          </div>
++        </div>
++
++        <div>
++          <ol aria-label={`Top ${top.length} do placar`} className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
++            {top.map((item, i) => (
++              <li key={item.game.id} className="w-[15rem] shrink-0 lg:w-auto">
++                <PickerItem
++                  entry={item}
++                  rank={i + 1}
++                  active={i === index}
++                  rotating={rotating}
++                  paused={paused}
++                  onSelect={() => setSelected(i)}
++                  onDone={() => setSelected((i + 1) % top.length)}
++                />
++              </li>
++            ))}
++          </ol>
++          <Link
++            to="/recomendacoes"
++            className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-muted transition-colors hover:text-ink"
++          >
++            Ver placar completo
++            {data.entries.length > TOP && <span className="tabular-nums">({data.entries.length} jogos)</span>}
++          </Link>
++        </div>
++      </div>
++    </section>
++  );
++}
++
++function PickerItem({
++  entry,
++  rank,
++  active,
++  rotating,
++  paused,
++  onSelect,
++  onDone,
++}: {
++  entry: RecommendationEntry;
++  rank: number;
++  active: boolean;
++  rotating: boolean;
++  paused: boolean;
++  onSelect: () => void;
++  onDone: () => void;
++}) {
++  const { game } = entry;
++  return (
++    <button
++      type="button"
++      onClick={onSelect}
++      aria-current={active ? 'true' : undefined}
++      aria-label={`${rank}º: ${game.name}, ${entry.upvotes} ${entry.upvotes === 1 ? 'apoio' : 'apoios'}`}
++      className={[
++        'hero-pick relative flex w-full items-center gap-3 overflow-hidden rounded-md p-2 text-left backdrop-blur-md transition-colors',
++        active ? 'hero-pick-active' : 'opacity-80 hover:bg-[color-mix(in_srgb,var(--surface)_70%,transparent)] hover:opacity-100',
++      ].join(' ')}
++    >
++      <span
++        aria-hidden
++        className={`w-5 text-center font-display text-lg font-extrabold tabular-nums ${active ? 'text-[var(--gold-ink)]' : 'text-muted'}`}
++      >
++        {rank}
++      </span>
++      <span className="h-12 w-9 shrink-0 overflow-hidden rounded-sm bg-surface-2">
++        {game.cover && <img src={game.cover.url} alt="" loading="lazy" className="size-full object-cover" />}
++      </span>
++      <span className="min-w-0 flex-1">
++        <span className={`block truncate text-sm font-bold text-ink`}>{game.name}</span>
++        <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted tabular-nums">
++          <ThumbsUp className="size-3" aria-hidden />
++          {entry.upvotes}
++        </span>
++      </span>
++      {active && rotating && (
++        <span
++          aria-hidden
++          className="hero-progress absolute inset-x-0 bottom-0 h-0.5 origin-left bg-[var(--gold-ink)]"
++          style={{ animationDuration: `${ROTATE_MS}ms`, animationPlayState: paused ? 'paused' : 'running' } as CSSProperties}
++          onAnimationEnd={onDone}
++        />
++      )}
++    </button>
++  );
++}
++
++function HeroSkeleton() {
++  return (
++    <div aria-hidden className="mb-10 grid min-h-[27rem] grid-cols-1 items-end gap-8 pt-10 md:min-h-[32rem] lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-12">
++      <div className="space-y-4">
++        <div className="skeleton h-4 w-48 rounded-sm" />
++        <div className="skeleton h-14 w-full max-w-lg rounded-md" />
++        <div className="skeleton h-10 w-72 rounded-md" />
++      </div>
++      <div className="hidden space-y-2 lg:block">
++        {Array.from({ length: TOP }, (_, i) => (
++          <div key={i} className="skeleton h-16 rounded-md" />
++        ))}
++      </div>
++    </div>
++  );
++}
++
++/** Placar vazio: o espaço do destaque vira o convite para a primeira recomendação. */
++function HeroEmpty() {
++  return (
++    <section aria-labelledby="destaque-grupo" className="relative isolate mb-10">
++      <div className="hero-empty relative overflow-hidden rounded-md border border-line px-6 py-10 md:px-10 md:py-14">
++        <Megaphone className="size-8 text-[var(--gold-ink)]" aria-hidden />
++        <h2 id="destaque-grupo" className="mt-4 max-w-xl font-display text-3xl font-extrabold tracking-tight md:text-4xl">
++          O placar do grupo ainda está vazio
++        </h2>
++        <p className="mt-2 max-w-lg text-muted">
++          Achou um jogo para todo mundo? Abra a página dele e clique em “Recomendar para geral”. O mais apoiado
++          aparece aqui, em destaque.
++        </p>
++        <Link
++          to="/busca?jogadores=4&modo=coop"
++          className="mt-6 inline-block rounded-md bg-white px-5 py-2.5 font-bold text-black transition hover:brightness-90"
++        >
++          Procurar jogos coop
++        </Link>
++      </div>
++    </section>
++  );
++}
+diff --git a/apps/web/src/components/home/QuickTiles.tsx b/apps/web/src/components/home/QuickTiles.tsx
+new file mode 100644
+index 0000000..40f9024
+--- /dev/null
++++ b/apps/web/src/components/home/QuickTiles.tsx
+@@ -0,0 +1,38 @@
++import type { CSSProperties } from 'react';
++import { Link } from 'react-router';
++import { QUICK_SEARCHES } from '../../lib/quickSearches';
++import { toSearchParams } from '../../lib/searchParams';
++import { QUICK_ICONS } from '../ui/quickIcons';
++
++/** Atalhos da home: as mesmas buscas rápidas da barra do topo, como blocos grandes. */
++export function QuickTiles() {
++  return (
++    <nav aria-label="Buscas rápidas" className="mb-14">
++      <ul className="grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-3 xl:grid-cols-6">
++        {QUICK_SEARCHES.map((quick) => {
++          const { icon: Icon, color } = QUICK_ICONS[quick.key]!;
++          return (
++            <li key={quick.key}>
++              <Link
++                to={`/busca?${toSearchParams(quick.filters, 'list').toString()}`}
++                className="quick-tile group flex h-full items-center gap-3 sm:items-start rounded-md border border-line bg-[color-mix(in_srgb,var(--surface)_82%,transparent)] p-2.5 sm:p-3.5 backdrop-blur-md transition-colors hover:border-[var(--tile)]"
++                style={{ '--tile': color } as CSSProperties}
++              >
++                <span
++                  aria-hidden
++                  className="flex size-9 shrink-0 sm:size-10 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--tile)_15%,transparent)] text-[var(--tile)] transition-transform duration-200 group-hover:-translate-y-0.5"
++                >
++                  <Icon className="size-5" />
++                </span>
++                <span className="min-w-0">
++                  <span className="block text-[0.95rem] font-bold leading-tight">{quick.label}</span>
++                  <span className="mt-1 hidden text-xs leading-snug text-muted sm:block">{quick.description}</span>
++                </span>
++              </Link>
++            </li>
++          );
++        })}
++      </ul>
++    </nav>
++  );
++}
+diff --git a/apps/web/src/components/home/SectionAmbient.tsx b/apps/web/src/components/home/SectionAmbient.tsx
+new file mode 100644
+index 0000000..a49c3c6
+--- /dev/null
++++ b/apps/web/src/components/home/SectionAmbient.tsx
+@@ -0,0 +1,54 @@
++import { type FocusEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react';
++import { CrossfadeImage } from './CrossfadeImage';
++
++/** Tempo parado sobre um card antes de o fundo mudar (evita trocas ao só cruzar a seção). */
++const HOVER_DELAY_MS = 140;
++/** Ao sair da seção, o fundo volta ao primeiro jogo depois deste tempo. */
++const LEAVE_DELAY_MS = 450;
++
++/**
++ * Fundo ambiente de uma seção da home: a capa de um jogo, bem desfocada e transparente,
++ * espalhando as cores dela atrás da seção. Começa no primeiro jogo e acompanha o card sob o
++ * mouse (ou com foco do teclado). Cada item marca sua imagem com o atributo data-ambient.
++ */
++export function useSectionAmbient(restingSrc: string | null) {
++  const [active, setActive] = useState<string | null>(null);
++  const timer = useRef<number>(undefined);
++
++  useEffect(() => () => window.clearTimeout(timer.current), []);
++
++  const schedule = useCallback((src: string | null, delay: number) => {
++    window.clearTimeout(timer.current);
++    timer.current = window.setTimeout(() => setActive(src), delay);
++  }, []);
++
++  const pick = (target: EventTarget, delay: number) => {
++    const src = (target as HTMLElement).closest<HTMLElement>('[data-ambient]')?.dataset.ambient;
++    if (src) schedule(src, delay);
++  };
++
++  const handlers = {
++    onPointerOver: (event: PointerEvent<HTMLElement>) => {
++      if (event.pointerType === 'mouse') pick(event.target, HOVER_DELAY_MS);
++    },
++    onPointerLeave: () => schedule(null, LEAVE_DELAY_MS),
++    onFocus: (event: FocusEvent<HTMLElement>) => pick(event.target, 0),
++    onBlur: (event: FocusEvent<HTMLElement>) => {
++      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) schedule(null, LEAVE_DELAY_MS);
++    },
++  };
++
++  return { src: active ?? restingSrc, handlers };
++}
++
++/** A camada do fundo. Vai dentro de uma seção com `relative isolate`. */
++export function SectionAmbient({ src }: { src: string | null }) {
++  if (!src) return null;
++  return (
++    <CrossfadeImage
++      src={src}
++      className="ambient pointer-events-none absolute -bottom-12 -top-20 left-1/2 -z-10 w-screen -translate-x-1/2"
++      imgClassName="object-cover"
++    />
++  );
++}
+diff --git a/apps/web/src/components/home/SectionHeader.tsx b/apps/web/src/components/home/SectionHeader.tsx
+new file mode 100644
+index 0000000..140797f
+--- /dev/null
++++ b/apps/web/src/components/home/SectionHeader.tsx
+@@ -0,0 +1,59 @@
++import { ChevronRight, type LucideIcon } from 'lucide-react';
++import { Link } from 'react-router';
++
++interface Props {
++  id: string;
++  href: string;
++  title: string;
++  subtitle: string;
++  icon: LucideIcon;
++  /** Total de jogos na lista completa, quando já carregou. */
++  total?: number | undefined;
++  /** Aviso curto em destaque ao lado do subtítulo, como "3 acabam esta semana". */
++  highlight?: string | null;
++}
++
++/** Cabeçalho de uma seção da home: ícone na cor da seção, título, o que entra nela e o total. */
++export function SectionHeader({ id, href, title, subtitle, icon: Icon, total, highlight }: Props) {
++  return (
++    <div className="mb-5 flex items-end justify-between gap-4">
++      <div className="flex min-w-0 items-center gap-3.5">
++        <span
++          aria-hidden
++          className="hidden size-11 shrink-0 items-center sm:flex justify-center rounded-md bg-[color-mix(in_srgb,var(--accent)_16%,transparent)] text-[var(--accent)] ring-1 ring-[color-mix(in_srgb,var(--accent)_32%,transparent)]"
++        >
++          <Icon className="size-[22px]" />
++        </span>
++        <div className="min-w-0">
++          <h2 id={id} className="font-display text-2xl font-bold tracking-tight md:text-[1.75rem]">
++            <Link to={href} className="group inline-flex items-center gap-1.5">
++              <span className="transition-colors group-hover:text-[var(--accent)]">{title}</span>
++              <ChevronRight
++                aria-hidden
++                className="size-6 text-muted transition-transform group-hover:translate-x-1 group-hover:text-[var(--accent)]"
++              />
++            </Link>
++          </h2>
++          <p className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted">
++            <span>{subtitle}</span>
++            {highlight && (
++              <span className="rounded-sm bg-[var(--accent)] px-1.5 py-px text-xs font-bold text-[var(--on-accent)]">
++                {highlight}
++              </span>
++            )}
++          </p>
++        </div>
++      </div>
++      {total !== undefined && total > 0 && (
++        <Link
++          to={href}
++          className="hidden shrink-0 items-center gap-2 rounded-md border border-line-strong px-3 py-1.5 text-sm font-semibold text-muted transition-colors hover:border-[var(--accent)] hover:text-ink sm:inline-flex"
++        >
++          Ver todos
++          <span className="rounded-sm bg-surface-2 px-1.5 text-xs font-bold tabular-nums text-ink">{total}</span>
++          <span className="sr-only">: {title}</span>
++        </Link>
++      )}
++    </div>
++  );
++}
+diff --git a/apps/web/src/components/home/TicketCard.tsx b/apps/web/src/components/home/TicketCard.tsx
+new file mode 100644
+index 0000000..effe4bb
+--- /dev/null
++++ b/apps/web/src/components/home/TicketCard.tsx
+@@ -0,0 +1,73 @@
++import { Clock } from 'lucide-react';
++import { type CardModel, endsLabel, endsSoon } from '../../lib/cards';
++import { CardAnchor } from '../game/Card';
++
++/**
++ * Card de "Grátis por tempo limitado" em forma de cupom: capa à esquerda, picote, e à direita
++ * o nome, a loja, o valor que deixa de pagar e o prazo. O picote tem furos de verdade (máscara).
++ */
++export function TicketCard({ card }: { card: CardModel }) {
++  const image = card.cover?.url ?? card.fallbackImage;
++  const ends = endsLabel(card.endsAt);
++  const soon = endsSoon(card.endsAt);
++
++  return (
++    <CardAnchor card={card} className="ticket group relative flex h-[9.75rem] rounded-md bg-surface ring-1 ring-line">
++      {image && (
++        <img
++          src={image}
++          alt=""
++          loading="lazy"
++          decoding="async"
++          aria-hidden
++          className="pointer-events-none absolute inset-0 size-full scale-125 object-cover opacity-30 blur-2xl saturate-150"
++        />
++      )}
++      <div aria-hidden className="absolute inset-0 bg-[linear-gradient(90deg,transparent,var(--surface)_70%)] opacity-80" />
++
++      <div className="relative w-[var(--ticket-stub)] shrink-0 p-2.5">
++        {image ? (
++          <img
++            src={image}
++            alt=""
++            loading="lazy"
++            decoding="async"
++            className="ticket-cover size-full rounded-sm object-cover shadow-[0_6px_18px_-6px_rgb(0_0_0/0.6)]"
++          />
++        ) : (
++          <div className="size-full rounded-sm bg-surface-2" />
++        )}
++      </div>
++
++      <span aria-hidden className="relative my-3.5 w-0 border-l-2 border-dashed border-line-strong" />
++
++      <div className="relative flex min-w-0 flex-1 flex-col justify-between py-3.5 pl-4 pr-3.5">
++        <div className="min-w-0">
++          {card.note && <p className="truncate text-xs font-semibold text-[var(--accent)]">{card.note}</p>}
++          <p className="mt-0.5 line-clamp-2 font-display text-[1.05rem] font-bold leading-tight text-ink">{card.title}</p>
++        </div>
++        <div className="flex flex-wrap items-end justify-between gap-x-2 gap-y-1.5">
++          <span className="text-sm leading-tight">
++            {card.price?.previous && <s className="mr-1.5 text-xs text-muted tabular-nums">{card.price.previous}</s>}
++            <strong className="text-[var(--accent)]">Grátis</strong>
++          </span>
++          {ends && (
++            <span
++              className={[
++                'inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs font-bold',
++                soon ? 'bg-[var(--accent)] text-[var(--on-accent)]' : 'bg-surface-2 text-ink',
++              ].join(' ')}
++            >
++              <Clock className="size-3" aria-hidden />
++              {ends}
++            </span>
++          )}
++        </div>
++      </div>
++    </CardAnchor>
++  );
++}
++
++export function TicketSkeleton() {
++  return <div aria-hidden className="ticket skeleton h-[9.75rem] rounded-md" />;
++}
+diff --git a/apps/web/src/components/layout/SearchBar.tsx b/apps/web/src/components/layout/SearchBar.tsx
+index 42ebafb..f8f3679 100644
+--- a/apps/web/src/components/layout/SearchBar.tsx
++++ b/apps/web/src/components/layout/SearchBar.tsx
+@@ -1,19 +1,11 @@
+-import { ArrowRight, CalendarDays, Gift, Globe, type LucideIcon, Search, SlidersHorizontal, Star, Timer, Users } from 'lucide-react';
++import { ArrowRight, Search, SlidersHorizontal } from 'lucide-react';
+ import { type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, useEffect, useId, useRef, useState } from 'react';
+ import { useLocation, useNavigate, useSearchParams } from 'react-router';
+ import { useDebounced, useSuggestions } from '../../hooks/useSearch';
+ import { focusFiltersSidebar } from '../../lib/events';
+ import { QUICK_SEARCHES } from '../../lib/quickSearches';
+ import { parseSearch, toSearchParams } from '../../lib/searchParams';
+-
+-const QUICK_ICONS: Record<string, { icon: LucideIcon; color: string }> = {
+-  coop4: { icon: Users, color: 'var(--accent-new)' },
+-  online8: { icon: Globe, color: 'var(--accent-new)' },
+-  free: { icon: Gift, color: 'var(--accent-free)' },
+-  demo: { icon: Timer, color: 'var(--accent-new)' },
+-  recent: { icon: CalendarDays, color: 'var(--muted)' },
+-  rated: { icon: Star, color: 'var(--accent-deal)' },
+-};
++import { QUICK_ICONS } from '../ui/quickIcons';
+ 
+ /** Item da lista navegável pelo teclado: sugestão de jogo, busca rápida ou ação. */
+ type Option = { id: string; run: () => void };
+diff --git a/apps/web/src/components/layout/TopBar.tsx b/apps/web/src/components/layout/TopBar.tsx
+index f29a69c..aa1937e 100644
+--- a/apps/web/src/components/layout/TopBar.tsx
++++ b/apps/web/src/components/layout/TopBar.tsx
+@@ -16,9 +16,10 @@ export function TopBar() {
+   const [optionsOpen, setOptionsOpen] = useState(false);
+   const [focusInside, setFocusInside] = useState(false);
+   const hidden = useHideOnScroll(optionsOpen || focusInside);
+-  // Páginas com fundo de arte (jogo, oferta) ou dourado (recomendações): barra translúcida e desfocada.
++  // Páginas com fundo de arte (home, jogo, oferta) ou dourado (recomendações): barra translúcida e desfocada.
+   const { pathname } = useLocation();
+-  const glass = pathname.startsWith('/jogo/') || pathname.startsWith('/oferta/') || pathname === '/recomendacoes';
++  const glass =
++    pathname === '/' || pathname.startsWith('/jogo/') || pathname.startsWith('/oferta/') || pathname === '/recomendacoes';
+ 
+   useEffect(() => {
+     const open = () => setOptionsOpen(true);
+diff --git a/apps/web/src/components/ui/quickIcons.ts b/apps/web/src/components/ui/quickIcons.ts
+new file mode 100644
+index 0000000..9977c4d
+--- /dev/null
++++ b/apps/web/src/components/ui/quickIcons.ts
+@@ -0,0 +1,11 @@
++import { CalendarDays, Gift, Globe, type LucideIcon, Star, Timer, Users } from 'lucide-react';
++
++/** Ícone e cor de cada busca rápida, usados no painel da busca e nos atalhos da home. */
++export const QUICK_ICONS: Record<string, { icon: LucideIcon; color: string }> = {
++  coop4: { icon: Users, color: 'var(--accent-new)' },
++  online8: { icon: Globe, color: 'var(--accent-new)' },
++  free: { icon: Gift, color: 'var(--accent-free)' },
++  demo: { icon: Timer, color: 'var(--accent-new)' },
++  recent: { icon: CalendarDays, color: 'var(--muted)' },
++  rated: { icon: Star, color: 'var(--accent-deal)' },
++};
+diff --git a/apps/web/src/hooks/useReducedMotion.ts b/apps/web/src/hooks/useReducedMotion.ts
+new file mode 100644
+index 0000000..de1975e
+--- /dev/null
++++ b/apps/web/src/hooks/useReducedMotion.ts
+@@ -0,0 +1,18 @@
++import { useSyncExternalStore } from 'react';
++
++const QUERY = '(prefers-reduced-motion: reduce)';
++
++function subscribe(onChange: () => void) {
++  const media = window.matchMedia(QUERY);
++  media.addEventListener('change', onChange);
++  return () => media.removeEventListener('change', onChange);
++}
++
++/** true quando o sistema pede menos movimento. */
++export function useReducedMotion(): boolean {
++  return useSyncExternalStore(
++    subscribe,
++    () => window.matchMedia(QUERY).matches,
++    () => false,
++  );
++}
+diff --git a/apps/web/src/lib/ambient.ts b/apps/web/src/lib/ambient.ts
+new file mode 100644
+index 0000000..8cb276a
+--- /dev/null
++++ b/apps/web/src/lib/ambient.ts
+@@ -0,0 +1,7 @@
++import type { CardModel } from './cards';
++
++/** Imagem usada no fundo ambiente: a capa (pequena basta, ela é desfocada) ou a alternativa. */
++export function ambientImage(card: CardModel | undefined): string | undefined {
++  if (!card) return undefined;
++  return card.cover?.url ?? card.fallbackImage ?? undefined;
++}
+diff --git a/apps/web/src/lib/cards.test.ts b/apps/web/src/lib/cards.test.ts
+index 8b3267b..7d44057 100644
+--- a/apps/web/src/lib/cards.test.ts
++++ b/apps/web/src/lib/cards.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from 'vitest';
+-import { dealToCard, formatDayMonth, formatMoney, gameToCard, giveawayToCard } from './cards';
++import { dealToCard, endsLabel, endsSoon, formatDayMonth, formatMoney, gameToCard, giveawayToCard } from './cards';
+ 
+ describe('cards', () => {
+   it('formata reais no padrão brasileiro', () => {
+@@ -92,4 +92,16 @@ describe('cards', () => {
+     expect(sale.badge).toBe('−50%');
+     expect(sale.price?.previous).toBeDefined();
+   });
++
++  it('descreve o prazo pelo calendário local', () => {
++    const now = new Date(2026, 9, 26, 23, 30); // 26/10, tarde da noite
++    expect(endsLabel('2026-10-26', now)).toBe('Acaba hoje');
++    expect(endsLabel('2026-10-27T03:00:00Z', now)).toBe('Acaba amanhã');
++    expect(endsLabel('2026-10-30', now)).toBe('Acaba em 4 dias');
++    expect(endsLabel('2026-11-05', now)).toBe('Até 05/11');
++    expect(endsLabel('2026-10-20', now)).toBeNull();
++    expect(endsLabel(null, now)).toBeNull();
++    expect(endsSoon('2026-11-01', now)).toBe(true);
++    expect(endsSoon('2026-11-02', now)).toBe(false);
++  });
+ });
+diff --git a/apps/web/src/lib/cards.ts b/apps/web/src/lib/cards.ts
+index 098e4fc..2024683 100644
+--- a/apps/web/src/lib/cards.ts
++++ b/apps/web/src/lib/cards.ts
+@@ -18,6 +18,8 @@ export interface CardModel {
+   note?: string;
+   /** Descrição completa para leitores de tela. */
+   label: string;
++  /** Fim da promoção ou do giveaway (AAAA-MM-DD ou ISO 8601), quando informado. */
++  endsAt?: string | null;
+ }
+ 
+ const moneyFormatters = new Map<string, Intl.NumberFormat>();
+@@ -77,6 +79,7 @@ export function giveawayToCard(giveaway: GiveawayCard): CardModel {
+     price: previous ? { current: 'Grátis', previous } : undefined,
+     note: giveaway.store,
+     label: `${giveaway.title}, grátis${until} na ${giveaway.store}`,
++    endsAt: giveaway.endDate,
+   };
+ }
+ 
+@@ -95,5 +98,35 @@ export function dealToCard(deal: DealCard): CardModel {
+     price: { current, previous },
+     note: deal.shop,
+     label: `${deal.title}, ${deal.cut}% de desconto: de ${previous} por ${current} na ${deal.shop}`,
++    endsAt: deal.expiry,
+   };
+ }
++
++/** Dias inteiros entre hoje e a data, pelo calendário local (hoje = 0). */
++function daysUntil(isoDate: string, now: Date): number {
++  const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number);
++  const end = new Date(y!, m! - 1, d!);
++  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
++  return Math.round((end.getTime() - today.getTime()) / 86_400_000);
++}
++
++/**
++ * Prazo em texto curto: "Acaba hoje", "Acaba amanhã", "Acaba em 3 dias" (até uma semana) ou
++ * "Até 30/10". Sem data, ou com data já passada, devolve null.
++ */
++export function endsLabel(isoDate: string | null | undefined, now = new Date()): string | null {
++  if (!isoDate) return null;
++  const days = daysUntil(isoDate, now);
++  if (days < 0) return null;
++  if (days === 0) return 'Acaba hoje';
++  if (days === 1) return 'Acaba amanhã';
++  if (days <= 6) return `Acaba em ${days} dias`;
++  return `Até ${formatDayMonth(isoDate)}`;
++}
++
++/** true quando o prazo termina nos próximos 7 dias (hoje incluído). */
++export function endsSoon(isoDate: string | null | undefined, now = new Date()): boolean {
++  if (!isoDate) return false;
++  const days = daysUntil(isoDate, now);
++  return days >= 0 && days <= 6;
++}
+diff --git a/apps/web/src/lib/sections.ts b/apps/web/src/lib/sections.ts
+index 113cda1..bb3d9be 100644
+--- a/apps/web/src/lib/sections.ts
++++ b/apps/web/src/lib/sections.ts
+@@ -1,4 +1,5 @@
+ import type { AdultMode, ListSort, NewGamesCategory, Page } from '@rj/shared';
++import { BadgePercent, Flame, Gift, type LucideIcon, Sparkles, Timer } from 'lucide-react';
+ import { api, DEFAULT_ORDER, type ListOrder } from './apiClient';
+ import { type CardModel, dealToCard, gameToCard, giveawayToCard } from './cards';
+ 
+@@ -10,6 +11,15 @@ export interface SectionDef {
+   accent: string;
+   /** Carrossel horizontal (25 jogos) ou grade de 5 × 4 (20 jogos). */
+   layout: 'carousel' | 'grid';
++  /**
++   * Formato dos cards na home: capas (padrão), cupons horizontais (carrossel) ou
++   * grade com o primeiro jogo em destaque, ocupando 2 × 2.
++   */
++  variant?: 'covers' | 'tickets' | 'featured';
++  /** Ícone ao lado do título. */
++  icon: LucideIcon;
++  /** Uma linha sob o título, dizendo o que entra na lista. */
++  subtitle: string;
+   emptyMessage: string;
+   /** Ordenações oferecidas na lista completa (a primeira é a padrão). */
+   sorts: ListSort[];
+@@ -37,6 +47,9 @@ export const SECTIONS: SectionDef[] = [
+     title: 'Grátis por tempo limitado',
+     accent: 'var(--accent-free)',
+     layout: 'carousel',
++    variant: 'tickets',
++    icon: Gift,
++    subtitle: 'Resgate enquanto durar e o jogo fica na sua conta',
+     emptyMessage: 'Nenhum jogo de PC está sendo dado de graça agora. Volte em alguns dias.',
+     // Todos estão a 100%: no lugar de "desconto", o valor original.
+     sorts: ['reviews', 'value', 'release'],
+@@ -48,6 +61,8 @@ export const SECTIONS: SectionDef[] = [
+     title: 'Grandes ofertas',
+     accent: 'var(--accent-deal)',
+     layout: 'carousel',
++    icon: BadgePercent,
++    subtitle: 'De 70% a 99% de desconto, em reais',
+     emptyMessage: 'Nenhum jogo com 70% ou mais de desconto agora.',
+     sorts: GAME_SORTS,
+     fetchPage: async (offset, limit, adult, order) => mapPage(await api.deals(offset, limit, adult, order), dealToCard),
+@@ -57,6 +72,9 @@ export const SECTIONS: SectionDef[] = [
+     title: 'Novos populares grátis',
+     accent: 'var(--accent-new)',
+     layout: 'grid',
++    variant: 'featured',
++    icon: Sparkles,
++    subtitle: 'Lançados nos últimos 90 dias, sem pagar nada',
+     emptyMessage: 'Nenhum jogo gratuito popular foi lançado nos últimos 90 dias.',
+     sorts: GAME_SORTS,
+     fetchPage: newGames('free'),
+@@ -66,6 +84,8 @@ export const SECTIONS: SectionDef[] = [
+     title: 'Novos populares com demo',
+     accent: 'var(--accent-demo)',
+     layout: 'grid',
++    icon: Timer,
++    subtitle: 'Lançados nos últimos 90 dias, com demo grátis na Steam',
+     emptyMessage: 'Nenhum jogo popular dos últimos 90 dias tem demo na Steam.',
+     sorts: GAME_SORTS,
+     fetchPage: newGames('demo'),
+@@ -75,6 +95,8 @@ export const SECTIONS: SectionDef[] = [
+     title: 'Novos populares pagos',
+     accent: 'var(--accent-paid)',
+     layout: 'grid',
++    icon: Flame,
++    subtitle: 'Lançados nos últimos 90 dias, os mais avaliados',
+     emptyMessage: 'Nenhum jogo pago popular foi lançado nos últimos 90 dias.',
+     sorts: GAME_SORTS,
+     fetchPage: newGames('paid'),
+diff --git a/apps/web/src/pages/HomePage.tsx b/apps/web/src/pages/HomePage.tsx
+index 6fbc940..7a6e05e 100644
+--- a/apps/web/src/pages/HomePage.tsx
++++ b/apps/web/src/pages/HomePage.tsx
+@@ -1,6 +1,8 @@
+ import { useEffect } from 'react';
+ import { GameCarousel } from '../components/game/GameCarousel';
+ import { GameGridSection } from '../components/game/GameGridSection';
++import { GroupHero } from '../components/home/GroupHero';
++import { QuickTiles } from '../components/home/QuickTiles';
+ import { SECTIONS } from '../lib/sections';
+ 
+ export function HomePage() {
+@@ -11,6 +13,8 @@ export function HomePage() {
+   return (
+     <>
+       <h1 className="sr-only">Descobrir jogos</h1>
++      <GroupHero />
++      <QuickTiles />
+       {SECTIONS.map((section) =>
+         section.layout === 'grid' ? (
+           <GameGridSection key={section.slug} section={section} />
+diff --git a/apps/web/src/styles/index.css b/apps/web/src/styles/index.css
+index 5c2b8bf..b3c8537 100644
+--- a/apps/web/src/styles/index.css
++++ b/apps/web/src/styles/index.css
+@@ -47,6 +47,11 @@
+   --accent-paid: #ff5fa8;
+   /* Texto sobre etiquetas coloridas */
+   --on-accent: #121212;
++  /* Dourado do placar do grupo (texto e detalhes) */
++  --gold-ink: #f3d27a;
++  /* Fundo ambiente das seções da home e textura da página */
++  --ambient-opacity: 0.3;
++  --grain-opacity: 0.05;
+ }
+ 
+ @media (prefers-color-scheme: light) {
+@@ -88,6 +93,9 @@
+   --accent-demo: #6d4bf2;
+   --accent-paid: #d0256f;
+   --on-accent: #ffffff;
++  --gold-ink: #9a6a0a;
++  --ambient-opacity: 0.22;
++  --grain-opacity: 0.035;
+ }
+ 
+ /* Bordas menos arredondadas em todo o site (círculos continuam com rounded-full). */
+@@ -201,6 +209,20 @@
+     translate: 220% 0;
+   }
+ }
++@keyframes hero-progress {
++  from {
++    scale: 0 1;
++  }
++  to {
++    scale: 1 1;
++  }
++}
++@keyframes hero-copy {
++  from {
++    opacity: 0;
++    translate: 0 8px;
++  }
++}
+ @keyframes twinkle {
+   0%,
+   100% {
+@@ -355,6 +377,107 @@
+     }
+   }
+ 
++  /* Imagem com fusão (CrossfadeImage): entra transparente e aparece quando carrega. */
++  .xfade {
++    opacity: 0;
++    transition: opacity 700ms var(--ease-out-quart);
++  }
++  .xfade[data-loaded] {
++    opacity: 1;
++  }
++
++  /* Fundo ambiente das seções da home: a capa desfocada, sumindo nas bordas de cima e de baixo. */
++  .ambient {
++    opacity: var(--ambient-opacity);
++    -webkit-mask-image: linear-gradient(180deg, transparent, #000 30%, #000 65%, transparent);
++    mask-image: linear-gradient(180deg, transparent, #000 30%, #000 65%, transparent);
++  }
++  .ambient img {
++    filter: blur(64px) saturate(1.5);
++    scale: 1.3;
++  }
++
++  /* Destaque da home: a arte some até a cor da página embaixo e à esquerda (onde fica o texto). */
++  .hero-scrim {
++    background:
++      linear-gradient(180deg, color-mix(in srgb, var(--bg) 30%, transparent) 0%, transparent 22%, transparent 45%, var(--bg) 92%),
++      linear-gradient(90deg, color-mix(in srgb, var(--bg) 92%, transparent) 0%, color-mix(in srgb, var(--bg) 55%, transparent) 45%, transparent 75%);
++  }
++  .hero-copy {
++    animation: hero-copy 420ms var(--ease-out-quart) both;
++  }
++  .hero-pick {
++    background: color-mix(in srgb, var(--bg) 35%, transparent);
++    box-shadow: inset 0 0 0 1px var(--line);
++  }
++  .hero-pick-active {
++    background: var(--surface);
++    box-shadow:
++      inset 0 0 0 1px color-mix(in srgb, var(--gold-ink) 60%, transparent),
++      0 10px 24px -12px rgb(0 0 0 / 0.55);
++  }
++  /* Barra dourada à esquerda do item escolhido. */
++  .hero-pick-active::before {
++    content: '';
++    position: absolute;
++    inset: 0.5rem auto 0.5rem 0;
++    width: 3px;
++    border-radius: 0 2px 2px 0;
++    background: var(--gold-ink);
++  }
++  .hero-progress {
++    animation-name: hero-progress;
++    animation-timing-function: linear;
++    animation-fill-mode: both;
++  }
++  .hero-empty {
++    background:
++      radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--gold-ink) 22%, transparent), transparent 60%),
++      var(--surface);
++  }
++
++  /*
++   * Cupom de "Grátis por tempo limitado": dois furos no picote, recortados por máscara
++   * (cada metade do cupom tem um círculo transparente na altura do picote).
++   */
++  .ticket {
++    --ticket-stub: 6.6rem;
++    --hole: 8px;
++    --hole-x: calc(var(--ticket-stub) + 1px);
++    -webkit-mask:
++      radial-gradient(circle var(--hole) at var(--hole-x) 0, #0000 98%, #000) top / 100% 51% no-repeat,
++      radial-gradient(circle var(--hole) at var(--hole-x) 100%, #0000 98%, #000) bottom / 100% 51% no-repeat;
++    mask:
++      radial-gradient(circle var(--hole) at var(--hole-x) 0, #0000 98%, #000) top / 100% 51% no-repeat,
++      radial-gradient(circle var(--hole) at var(--hole-x) 100%, #0000 98%, #000) bottom / 100% 51% no-repeat;
++    transition: translate var(--dur-3) var(--ease-out-quart);
++  }
++  .ticket-cover {
++    transition: scale var(--dur-3) var(--ease-out-quart);
++  }
++  @media (hover: hover) {
++    a.ticket:hover {
++      translate: 0 -4px;
++    }
++    a.ticket:hover .ticket-cover {
++      scale: 1.04;
++    }
++  }
++  /* Cupons: mais largos que as capas, 3 por vez no desktop. */
++  .carousel-track.ticket-track {
++    --visible: 1.15;
++  }
++  @media (min-width: 640px) {
++    .carousel-track.ticket-track {
++      --visible: 2.2;
++    }
++  }
++  @media (min-width: 1024px) {
++    .carousel-track.ticket-track {
++      --visible: 3;
++    }
++  }
++
+   .wordmark {
+     background: linear-gradient(100deg, var(--brand-a), var(--brand-b) 55%, var(--brand-c));
+     -webkit-background-clip: text;
+@@ -416,3 +539,18 @@
+   --muted: #5c5c66;
+ }
+ 
++
++/*
++ * Textura de grão por cima da página toda, bem leve, para o fundo liso não parecer "chapado".
++ * Não captura cliques.
++ */
++body::after {
++  content: '';
++  position: fixed;
++  inset: 0;
++  z-index: 60;
++  pointer-events: none;
++  opacity: var(--grain-opacity);
++  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
++  mix-blend-mode: overlay;
++}
+diff --git a/packages/shared/src/index.ts b/packages/shared/src/index.ts
+index 46317c6..9aedddb 100644
+--- a/packages/shared/src/index.ts
++++ b/packages/shared/src/index.ts
+@@ -277,6 +277,10 @@ export interface RecommendationEntry {
+   /** Tem demo grátis na Steam. */
+   hasDemo: boolean;
+   players: PlayerCounts | null;
++  /** Imagem larga (arte ou screenshot da IGDB), para o destaque da home. */
++  artwork?: string | null;
++  /** Gêneros pela IGDB. */
++  genres?: string[];
+   upvotes: number;
+   removeVotes: number;
+   /** Se quem está vendo (pelo IP) já apoiou / pediu remoção. */

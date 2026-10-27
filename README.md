@@ -102,7 +102,10 @@ O critério é "foco em conteúdo sexual": jogos mainstream com cenas pontuais c
 
 ## Como funcionam as seções da home
 
-- **Grátis por tempo limitado** (carrossel, 25 jogos): primeiro os jogos pagos com 100% de
+- **Destaque do grupo** (topo): a arte do 1º do placar de recomendações na largura toda, com nome, gêneros, selos, preço, votos e "Ver jogo". Um seletor ao lado percorre o top 5 sozinho a cada 8 s (pausa com o mouse ou o foco; parado com "reduzir movimento"). Placar vazio: convite para a primeira recomendação. Erro no servidor: o destaque some e o resto da home segue.
+- **Atalhos**: as buscas rápidas da barra do topo, como blocos grandes.
+- Cada seção tem ícone, subtítulo, total ("Ver todos") e uma **ilustração de traço** ao fundo, estática e na cor da seção (grátis e ofertas dividem uma só, com presentes, cupons e etiquetas de desconto; calendário; controles; gráfico com estrelas), desenhada em SVG no próprio código. No destaque, um jogo sem arte larga na IGDB ganha a ilustração de um pódio.
+- **Grátis por tempo limitado** (carrossel de cupons, 25 jogos): cada jogo vira um cupom com capa, loja, valor original e prazo ("Acaba hoje", "Acaba em 3 dias", "Até 05/11"); o cabeçalho avisa quantos acabam na semana. primeiro os jogos pagos com 100% de
   desconto na IsThereAnyDeal, do preço original mais alto para o mais baixo; depois os giveaways
   do GamerPower, por popularidade. O mesmo jogo aparece uma vez só. Os títulos do GamerPower são
   limpos ("Tunic (Epic Games) Giveaway" → "Tunic") e associados à IGDB para usar a capa vertical.
@@ -112,7 +115,7 @@ O critério é "foco em conteúdo sexual": jogos mainstream com cenas pontuais c
   histórico e avaliações da IsThereAnyDeal. A lista é aquecida quando o servidor sobe e, depois,
   recarregada em segundo plano sem ninguém esperar. Maior desconto primeiro, nota da IGDB no empate. Links e preços aparecem exatamente
   como a IsThereAnyDeal fornece, como pedem os termos de uso dela.
-- **Novos populares grátis / com demo / pagos** (grades de 5 × 4, 20 jogos): até 400 jogos
+- **Novos populares grátis / com demo / pagos** (grades de 5 × 4, 20 jogos; em "grátis", o 1º ocupa 2 × 2): até 400 jogos
   populares lançados nos últimos 90 dias são divididos pelos dados da loja Steam. Pagos que têm
   demo aparecem só em "com demo". Jogos fora da Steam não entram em nenhuma das três.
 
@@ -251,6 +254,7 @@ Se a Steam pedir para desacelerar, a fila pausa 2 minutos e continua.
 - [x] Ordenação das listas, avaliações da Steam, duplicatas/edições, card da busca, placar ao vivo
 - [x] Buscas rápidas e botão Filtros na barra, novo card da busca, barra translúcida na página do jogo
 - [x] Recomendações em pódio de escada, com preço, DEMO e jogadores
+- [x] Home: destaque do placar do grupo, atalhos, cabeçalhos com ícone, cupons, grade com destaque, ilustrações de fundo e grão
 
 Resumo das decisões e do contexto do projeto: [`CONTEXTO.md`](CONTEXTO.md).
 - [ ] Etapa 7: deploy (Cloudflare Pages + Render + Neon)

@@ -1,19 +1,11 @@
-import { ArrowRight, CalendarDays, Gift, Globe, type LucideIcon, Search, SlidersHorizontal, Star, Timer, Users } from 'lucide-react';
+import { ArrowRight, Search, SlidersHorizontal } from 'lucide-react';
 import { type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, useEffect, useId, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useDebounced, useSuggestions } from '../../hooks/useSearch';
 import { focusFiltersSidebar } from '../../lib/events';
 import { QUICK_SEARCHES } from '../../lib/quickSearches';
 import { parseSearch, toSearchParams } from '../../lib/searchParams';
-
-const QUICK_ICONS: Record<string, { icon: LucideIcon; color: string }> = {
-  coop4: { icon: Users, color: 'var(--accent-new)' },
-  online8: { icon: Globe, color: 'var(--accent-new)' },
-  free: { icon: Gift, color: 'var(--accent-free)' },
-  demo: { icon: Timer, color: 'var(--accent-new)' },
-  recent: { icon: CalendarDays, color: 'var(--muted)' },
-  rated: { icon: Star, color: 'var(--accent-deal)' },
-};
+import { QUICK_ICONS } from '../ui/quickIcons';
 
 /** Item da lista navegável pelo teclado: sugestão de jogo, busca rápida ou ação. */
 type Option = { id: string; run: () => void };

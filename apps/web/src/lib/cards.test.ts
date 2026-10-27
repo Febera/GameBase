@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dealToCard, formatDayMonth, formatMoney, gameToCard, giveawayToCard } from './cards';
+import { dealToCard, endsLabel, endsSoon, formatDayMonth, formatMoney, gameToCard, giveawayToCard } from './cards';
 
 describe('cards', () => {
   it('formata reais no padrão brasileiro', () => {
@@ -91,5 +91,17 @@ describe('cards', () => {
     });
     expect(sale.badge).toBe('−50%');
     expect(sale.price?.previous).toBeDefined();
+  });
+
+  it('descreve o prazo pelo calendário local', () => {
+    const now = new Date(2026, 9, 26, 23, 30); // 26/10, tarde da noite
+    expect(endsLabel('2026-10-26', now)).toBe('Acaba hoje');
+    expect(endsLabel('2026-10-27T03:00:00Z', now)).toBe('Acaba amanhã');
+    expect(endsLabel('2026-10-30', now)).toBe('Acaba em 4 dias');
+    expect(endsLabel('2026-11-05', now)).toBe('Até 05/11');
+    expect(endsLabel('2026-10-20', now)).toBeNull();
+    expect(endsLabel(null, now)).toBeNull();
+    expect(endsSoon('2026-11-01', now)).toBe(true);
+    expect(endsSoon('2026-11-02', now)).toBe(false);
   });
 });

@@ -18,6 +18,8 @@ export interface CardModel {
   note?: string;
   /** Descrição completa para leitores de tela. */
   label: string;
+  /** Fim da promoção ou do giveaway (AAAA-MM-DD ou ISO 8601), quando informado. */
+  endsAt?: string | null;
 }
 
 const moneyFormatters = new Map<string, Intl.NumberFormat>();
@@ -77,6 +79,7 @@ export function giveawayToCard(giveaway: GiveawayCard): CardModel {
     price: previous ? { current: 'Grátis', previous } : undefined,
     note: giveaway.store,
     label: `${giveaway.title}, grátis${until} na ${giveaway.store}`,
+    endsAt: giveaway.endDate,
   };
 }
 
@@ -95,5 +98,35 @@ export function dealToCard(deal: DealCard): CardModel {
     price: { current, previous },
     note: deal.shop,
     label: `${deal.title}, ${deal.cut}% de desconto: de ${previous} por ${current} na ${deal.shop}`,
+    endsAt: deal.expiry,
   };
+}
+
+/** Dias inteiros entre hoje e a data, pelo calendário local (hoje = 0). */
+function daysUntil(isoDate: string, now: Date): number {
+  const [y, m, d] = isoDate.slice(0, 10).split('-').map(Number);
+  const end = new Date(y!, m! - 1, d!);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((end.getTime() - today.getTime()) / 86_400_000);
+}
+
+/**
+ * Prazo em texto curto: "Acaba hoje", "Acaba amanhã", "Acaba em 3 dias" (até uma semana) ou
+ * "Até 30/10". Sem data, ou com data já passada, devolve null.
+ */
+export function endsLabel(isoDate: string | null | undefined, now = new Date()): string | null {
+  if (!isoDate) return null;
+  const days = daysUntil(isoDate, now);
+  if (days < 0) return null;
+  if (days === 0) return 'Acaba hoje';
+  if (days === 1) return 'Acaba amanhã';
+  if (days <= 6) return `Acaba em ${days} dias`;
+  return `Até ${formatDayMonth(isoDate)}`;
+}
+
+/** true quando o prazo termina nos próximos 7 dias (hoje incluído). */
+export function endsSoon(isoDate: string | null | undefined, now = new Date()): boolean {
+  if (!isoDate) return false;
+  const days = daysUntil(isoDate, now);
+  return days >= 0 && days <= 6;
 }

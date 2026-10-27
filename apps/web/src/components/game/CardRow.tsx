@@ -10,26 +10,38 @@ interface Props {
   loading?: boolean;
   /** Conteúdo exibido abaixo do trilho (avisos). */
   children?: ReactNode;
+  /** Desenho de cada card (padrão: capa). */
+  renderCard?: (card: CardModel) => ReactNode;
+  /** Esqueleto enquanto carrega (padrão: capa). */
+  skeleton?: ReactNode;
+  /** Classe extra do trilho, para outros formatos de card (ex.: cupons, 3 por vez). */
+  trackClassName?: string;
 }
 
+const defaultRender = (card: CardModel) => <Card card={card} />;
+
 /** Faixa horizontal de cards, 5 visíveis no desktop, com setas nas extremidades. */
-export function CardRow({ heading, cards, loading = false, children }: Props) {
+export function CardRow({
+  heading,
+  cards,
+  loading = false,
+  children,
+  renderCard = defaultRender,
+  skeleton = <CardSkeleton />,
+  trackClassName = '',
+}: Props) {
   const track = useRef<HTMLUListElement>(null);
 
   return (
     <>
       <div className="mb-4">{heading}</div>
       <div className="relative">
-        <ul ref={track} className="carousel-track pb-1">
+        <ul ref={track} className={`carousel-track pb-1 ${trackClassName}`}>
           {loading || !cards
-            ? Array.from({ length: 5 }, (_, i) => (
-                <li key={i}>
-                  <CardSkeleton />
-                </li>
-              ))
+            ? Array.from({ length: 5 }, (_, i) => <li key={i}>{skeleton}</li>)
             : cards.map((card, i) => (
                 <li key={card.key} className="reveal" style={{ '--i': i } as CSSProperties}>
-                  <Card card={card} />
+                  {renderCard(card)}
                 </li>
               ))}
         </ul>
