@@ -17,7 +17,7 @@ import type { AdultContentFilter } from './adultContent.js';
 import { playerCounts } from './gameDetailsService.js';
 import { steamPrice } from './gamesService.js';
 import type { IgdbLookup } from './igdbLookup.js';
-import { type IgdbGame, toGameCard } from './igdbMappers.js';
+import { type IgdbGame, igdbImageUrl, toGameCard } from './igdbMappers.js';
 import type { SteamSync } from './steamSync.js';
 import type { SteamApp } from '../db/steamAppsRepository.js';
 
@@ -35,6 +35,16 @@ interface Deps {
 interface Extras {
   steamAppId: number | null;
   players: ReturnType<typeof playerCounts>;
+  artwork: string | null;
+  genres: string[];
+}
+
+interface IgdbExtras {
+  id: number;
+  multiplayer_modes?: Parameters<typeof playerCounts>[0];
+  artworks?: { image_id: string }[];
+  screenshots?: { image_id: string }[];
+  genres?: { name: string }[];
 }
 const EXTRAS_TTL_MS = 60 * 60 * 1000;
 
@@ -76,14 +86,21 @@ export function createRecommendationsService({ repo, igdb, adult, lookup, steam,
     try {
       const [steamIds, modes] = await Promise.all([
         lookup ? lookup.steamAppIdsFor(missing) : Promise.resolve(new Map<number, number>()),
-        igdb.query<{ id: number; multiplayer_modes?: Parameters<typeof playerCounts>[0] }>(
+        igdb.query<IgdbExtras>(
           'games',
-          `fields multiplayer_modes.platform,multiplayer_modes.onlinemax,multiplayer_modes.onlinecoopmax,multiplayer_modes.offlinemax,multiplayer_modes.offlinecoopmax; where id = (${missing.join(',')}); limit 500;`,
+          `fields multiplayer_modes.platform,multiplayer_modes.onlinemax,multiplayer_modes.onlinecoopmax,multiplayer_modes.offlinemax,multiplayer_modes.offlinecoopmax,artworks.image_id,screenshots.image_id,genres.name; where id = (${missing.join(',')}); limit 500;`,
         ),
       ]);
-      const playersById = new Map(modes.map((g) => [g.id, playerCounts(g.multiplayer_modes)]));
+      const byId = new Map(modes.map((g) => [g.id, g]));
       for (const id of missing) {
-        const extras = { steamAppId: steamIds.get(id) ?? null, players: playersById.get(id) ?? null };
+        const game = byId.get(id);
+        const wide = game?.artworks?.[0]?.image_id ?? game?.screenshots?.[0]?.image_id;
+        const extras: Extras = {
+          steamAppId: steamIds.get(id) ?? null,
+          players: game ? playerCounts(game.multiplayer_modes) : null,
+          artwork: wide ? igdbImageUrl(wide, '1080p') : null,
+          genres: game?.genres?.map((g) => g.name) ?? [],
+        };
         cache?.set(`rec-extras:${id}`, extras, EXTRAS_TTL_MS);
         result.set(id, extras);
       }
@@ -113,6 +130,8 @@ export function createRecommendationsService({ repo, igdb, adult, lookup, steam,
       return {
         ...entry,
         players: x?.players ?? null,
+        artwork: x?.artwork ?? null,
+        genres: x?.genres ?? [],
         hasDemo: Boolean(app?.found && !app.isFree && app.hasDemo),
         game: app?.found ? { ...entry.game, free: app.isFree, price: steamPrice(app) } : entry.game,
       };

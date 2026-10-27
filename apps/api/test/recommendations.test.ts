@@ -174,6 +174,25 @@ describe('serviço de recomendações', () => {
     expect(second).toMatchObject({ hasDemo: false, players: null, game: { free: true } });
   });
 
+  it('traz a arte larga (arte, senão screenshot) e os gêneros de cada jogo', async () => {
+    const repo = memoryRepo();
+    await repo.recommend(game(1), 'a');
+    await repo.recommend(game(2), 'a');
+    await repo.recommend(game(3), 'a');
+    const igdbArt: IgdbClient = {
+      query: vi.fn(async () => [
+        { id: 1, artworks: [{ image_id: 'art1' }], screenshots: [{ image_id: 'shot1' }], genres: [{ name: 'Shooter' }] },
+        { id: 2, screenshots: [{ image_id: 'shot2' }] },
+      ]) as IgdbClient['query'],
+    };
+    const service = createRecommendationsService({ repo, igdb: igdbArt, adult: adultFilter(), cache: new MemoryCache() });
+    const entries = (await service.board('a', 'hide')).entries;
+    const byId = new Map(entries.map((e) => [e.game.id, e]));
+    expect(byId.get(1)).toMatchObject({ artwork: expect.stringContaining('t_1080p/art1.jpg'), genres: ['Shooter'] });
+    expect(byId.get(2)?.artwork).toContain('t_1080p/shot2.jpg');
+    expect(byId.get(3)).toMatchObject({ artwork: null, genres: [] });
+  });
+
   it('sem banco, explica o problema', async () => {
     const service = createRecommendationsService({ repo: null, igdb, adult: adultFilter() });
     await expect(service.board('a', 'hide')).rejects.toBeInstanceOf(MissingConfigError);

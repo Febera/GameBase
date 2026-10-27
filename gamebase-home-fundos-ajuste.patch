@@ -1,0 +1,391 @@
+diff --git a/README.md b/README.md
+index 1e27e10..53a8748 100644
+--- a/README.md
++++ b/README.md
+@@ -104,7 +104,7 @@ O critério é "foco em conteúdo sexual": jogos mainstream com cenas pontuais c
+ 
+ - **Destaque do grupo** (topo): a arte do 1º do placar de recomendações na largura toda, com nome, gêneros, selos, preço, votos e "Ver jogo". Um seletor ao lado percorre o top 5 sozinho a cada 8 s (pausa com o mouse ou o foco; parado com "reduzir movimento"). Placar vazio: convite para a primeira recomendação. Erro no servidor: o destaque some e o resto da home segue.
+ - **Atalhos**: as buscas rápidas da barra do topo, como blocos grandes.
+-- Cada seção tem ícone, subtítulo, total ("Ver todos") e uma **ilustração de traço** ao fundo, estática e na cor da seção (presentes e cupons, etiquetas de desconto, calendário, controles, gráfico com estrelas), desenhada em SVG no próprio código. No destaque, um jogo sem arte larga na IGDB ganha a ilustração de um pódio.
++- Cada seção tem ícone, subtítulo, total ("Ver todos") e uma **ilustração de traço** ao fundo, estática e na cor da seção (grátis e ofertas dividem uma só, com presentes, cupons e etiquetas de desconto; calendário; controles; gráfico com estrelas), desenhada em SVG no próprio código. No destaque, um jogo sem arte larga na IGDB ganha a ilustração de um pódio.
+ - **Grátis por tempo limitado** (carrossel de cupons, 25 jogos): cada jogo vira um cupom com capa, loja, valor original e prazo ("Acaba hoje", "Acaba em 3 dias", "Até 05/11"); o cabeçalho avisa quantos acabam na semana. primeiro os jogos pagos com 100% de
+   desconto na IsThereAnyDeal, do preço original mais alto para o mais baixo; depois os giveaways
+   do GamerPower, por popularidade. O mesmo jogo aparece uma vez só. Os títulos do GamerPower são
+diff --git a/apps/web/src/components/game/GameCarousel.tsx b/apps/web/src/components/game/GameCarousel.tsx
+index a1a11ed..9c84fc0 100644
+--- a/apps/web/src/components/game/GameCarousel.tsx
++++ b/apps/web/src/components/game/GameCarousel.tsx
+@@ -11,7 +11,7 @@ import { SlowServerNote } from '../ui/SlowServerNote';
+ import { CardRow } from './CardRow';
+ 
+ /** Faixa horizontal de uma seção da home. O título leva à lista completa. */
+-export function GameCarousel({ section }: { section: SectionDef }) {
++export function GameCarousel({ section, withArt = true }: { section: SectionDef; withArt?: boolean }) {
+   const { data, isPending, isError, error, refetch } = useSectionPreview(section);
+   const slow = useSlowLoading(isPending);
+   const headingId = `secao-${section.slug}`;
+@@ -40,7 +40,7 @@ export function GameCarousel({ section }: { section: SectionDef }) {
+       className="relative isolate mb-16"
+       style={{ '--accent': section.accent } as CSSProperties}
+     >
+-      <SectionArt kind={section.art} />
++      {withArt && <SectionArt kind={section.art} />}
+       {isError ? (
+         <>
+           {heading}
+diff --git a/apps/web/src/components/game/GameGridSection.tsx b/apps/web/src/components/game/GameGridSection.tsx
+index 8714c0d..944a0d0 100644
+--- a/apps/web/src/components/game/GameGridSection.tsx
++++ b/apps/web/src/components/game/GameGridSection.tsx
+@@ -18,7 +18,7 @@ import { Card, CardSkeleton } from './Card';
+ const FEATURED_COUNT = 18;
+ 
+ /** Grade de 5 colunas × 4 linhas, com "Ver mais" no fim levando à lista completa. */
+-export function GameGridSection({ section }: { section: SectionDef }) {
++export function GameGridSection({ section, withArt = true }: { section: SectionDef; withArt?: boolean }) {
+   const { data, isPending, isError, error, refetch } = useSectionPreview(section);
+   const slow = useSlowLoading(isPending);
+   const headingId = `secao-${section.slug}`;
+@@ -37,7 +37,7 @@ export function GameGridSection({ section }: { section: SectionDef }) {
+       className="relative isolate mb-16"
+       style={{ '--accent': section.accent } as CSSProperties}
+     >
+-      <SectionArt kind={section.art} />
++      {withArt && <SectionArt kind={section.art} />}
+       <SectionHeader
+         id={headingId}
+         href={href}
+diff --git a/apps/web/src/components/home/SectionArt.tsx b/apps/web/src/components/home/SectionArt.tsx
+index 880f2c1..a4347c2 100644
+--- a/apps/web/src/components/home/SectionArt.tsx
++++ b/apps/web/src/components/home/SectionArt.tsx
+@@ -1,7 +1,7 @@
+ import type { ReactNode } from 'react';
+ 
+ /** Tema da ilustração de fundo de cada seção da home. */
+-export type ArtKind = 'gifts' | 'tags' | 'calendar' | 'controls' | 'charts' | 'podium';
++export type ArtKind = 'offers' | 'calendar' | 'controls' | 'charts' | 'podium';
+ 
+ /*
+  * Ilustrações de traço fino, no estilo do calendário da loja da Steam: desenhadas aqui mesmo
+@@ -9,7 +9,10 @@ export type ArtKind = 'gifts' | 'tags' | 'calendar' | 'controls' | 'charts' | 'p
+  * largura toda da tela e "corta" as sobras (slice), então as figuras ficam grandes nos lados.
+  */
+ const W = 1600;
++/** Altura das cenas largas (faixas e destaque). */
+ const H = 560;
++/** Altura das cenas altas: grades de 4 linhas e o grupo grátis + ofertas. */
++const TALL = 1400;
+ 
+ /** Estrela de 5 pontas centrada em (cx, cy). */
+ function star(cx: number, cy: number, r: number): string {
+@@ -118,31 +121,37 @@ function Calendar() {
+ }
+ 
+ function Charts() {
+-  const trend = [
+-    [-20, 470],
+-    [180, 430],
+-    [330, 450],
+-    [520, 360],
+-    [700, 390],
+-    [900, 280],
+-    [1080, 310],
+-    [1280, 190],
+-    [1450, 210],
+-    [1640, 90],
++  // Duas linhas de tendência subindo, uma em cima e outra embaixo, e estrelas de avaliação.
++  const trends = [
++    [[-20, 520], [200, 470], [360, 500], [560, 390], [760, 420], [960, 300], [1160, 330], [1380, 200], [1640, 140]],
++    [[-20, 1260], [220, 1210], [420, 1240], [640, 1120], [860, 1150], [1060, 1030], [1260, 1060], [1460, 930], [1640, 880]],
+   ];
+   return (
+     <>
+-      {[140, 260, 380, 500].map((y) => (
+-        <line key={y} x1={0} y1={y} x2={W} y2={y} strokeDasharray="2 10" />
++      {[180, 360, 540, 720, 900, 1080, 1260].map((y) => (
++        <line key={y} x1={0} y1={y} x2={W} y2={y} strokeDasharray="2 12" />
+       ))}
+-      <polyline points={trend.map((p) => p.join(',')).join(' ')} strokeLinejoin="round" />
+-      {trend.slice(1, -1).map(([x, y]) => (
+-        <circle key={x} cx={x} cy={y} r={6} />
++      {trends.map((trend, t) => (
++        <g key={t}>
++          <polyline points={trend.map((p) => p.join(',')).join(' ')} strokeLinejoin="round" />
++          {trend.slice(1, -1).map(([x, y]) => (
++            <circle key={x} cx={x} cy={y} r={7} />
++          ))}
++        </g>
++      ))}
++      {[
++        [130, 170, 52],
++        [1480, 470, 64],
++        [1250, 110, 30],
++        [330, 760, 40],
++        [1380, 760, 34],
++        [700, 640, 22],
++        [160, 1060, 60],
++        [1490, 1180, 46],
++        [900, 1330, 28],
++      ].map(([x, y, r]) => (
++        <path key={`${x}-${y}`} d={star(x!, y!, r!)} strokeLinejoin="round" />
+       ))}
+-      <path d={star(140, 150, 46)} strokeLinejoin="round" />
+-      <path d={star(1460, 400, 58)} strokeLinejoin="round" />
+-      <path d={star(1240, 80, 28)} strokeLinejoin="round" />
+-      <path d={star(330, 330, 24)} strokeLinejoin="round" />
+     </>
+   );
+ }
+@@ -172,46 +181,86 @@ function Podium() {
+   );
+ }
+ 
+-const SCENES: Record<ArtKind, () => ReactNode> = {
+-  gifts: () => (
+-    <>
+-      <Gift x={40} y={70} s={170} rotate={-12} />
+-      <Ticket x={300} y={330} w={300} h={130} rotate={8} />
+-      <Gift x={760} y={20} s={110} rotate={10} />
+-      <Ticket x={1010} y={110} w={260} h={112} rotate={-9} />
+-      <Gift x={1380} y={250} s={190} rotate={14} />
+-      <Gift x={640} y={400} s={90} rotate={-6} />
+-    </>
+-  ),
+-  tags: () => (
+-    <>
+-      <Tag x={30} y={90} w={300} rotate={-14} text="−85%" />
+-      <Tag x={520} y={360} w={230} rotate={9} text="−70%" />
+-      <Tag x={1150} y={60} w={330} rotate={12} text="−99%" />
+-      <text x={1330} y={500} fontSize={260} transform="rotate(-8 1400 420)">
+-        %
+-      </text>
+-      <text x={820} y={170} fontSize={140} transform="rotate(10 860 120)">
+-        %
+-      </text>
+-    </>
+-  ),
+-  calendar: Calendar,
+-  controls: () => (
+-    <>
+-      <Gamepad x={30} y={120} s={260} rotate={-12} />
+-      <g transform="translate(620 330) rotate(8)">
+-        <circle cx={70} cy={70} r={70} />
+-        <path d="M55,40 L105,70 L55,100 Z" strokeLinejoin="round" />
+-      </g>
+-      <g transform="translate(980 40) rotate(-10)">
+-        <path d="M0,0 H110 M0,190 H110 M12,0 C12,70 98,90 98,95 C98,100 12,120 12,190 M98,0 C98,70 12,90 12,95 C12,100 98,120 98,190" />
+-      </g>
+-      <Gamepad x={1300} y={300} s={220} rotate={14} />
+-    </>
+-  ),
+-  charts: Charts,
+-  podium: Podium,
++/** Ampulheta. */
++function Hourglass({ x, y, s, rotate }: { x: number; y: number; s: number; rotate: number }) {
++  const w = s * 0.58;
++  return (
++    <g transform={`translate(${x} ${y}) rotate(${rotate} ${w / 2} ${s / 2})`}>
++      <path
++        d={`M0,0 H${w} M0,${s} H${w} M${w * 0.1},0 C${w * 0.1},${s * 0.37} ${w * 0.9},${s * 0.47} ${w * 0.9},${s * 0.5} C${w * 0.9},${s * 0.53} ${w * 0.1},${s * 0.63} ${w * 0.1},${s} M${w * 0.9},0 C${w * 0.9},${s * 0.37} ${w * 0.1},${s * 0.47} ${w * 0.1},${s * 0.5} C${w * 0.1},${s * 0.53} ${w * 0.9},${s * 0.63} ${w * 0.9},${s}`}
++      />
++    </g>
++  );
++}
++
++/** Botão de play num círculo. */
++function Play({ x, y, r, rotate }: { x: number; y: number; r: number; rotate: number }) {
++  return (
++    <g transform={`translate(${x} ${y}) rotate(${rotate})`}>
++      <circle cx={0} cy={0} r={r} />
++      <path d={`M${-r * 0.22},${-r * 0.42} L${r * 0.48},0 L${-r * 0.22},${r * 0.42} Z`} strokeLinejoin="round" />
++    </g>
++  );
++}
++
++interface Scene {
++  /** Altura do viewBox (a largura é sempre W). */
++  height: number;
++  render: () => ReactNode;
++}
++
++const SCENES: Record<ArtKind, Scene> = {
++  // Grátis + ofertas, numa ilustração só que cobre as duas seções: presentes e cupons (verde do
++  // grátis) misturados com etiquetas e "%" (verde das ofertas).
++  offers: {
++    height: 800,
++    render: () => (
++      <>
++        <g style={{ color: 'var(--accent-free)' }}>
++          <Gift x={60} y={40} s={150} rotate={-12} />
++          <Ticket x={640} y={30} w={260} h={100} rotate={-6} />
++          <Gift x={1420} y={170} s={150} rotate={14} />
++          <Ticket x={40} y={520} w={240} h={100} rotate={10} />
++          <Gift x={760} y={690} s={100} rotate={-8} />
++        </g>
++        <g style={{ color: 'var(--accent-deal)' }}>
++          <Tag x={240} y={250} w={230} rotate={-14} text="−85%" />
++          <Tag x={640} y={345} w={220} rotate={8} text="−70%" />
++          <Tag x={1180} y={330} w={280} rotate={12} text="−99%" />
++          <text x={1100} y={120} fontSize={110} transform="rotate(-6 1130 90)">
++            %
++          </text>
++          <text x={1380} y={770} fontSize={220} transform="rotate(-8 1440 700)">
++            %
++          </text>
++        </g>
++      </>
++    ),
++  },
++  calendar: { height: H, render: Calendar },
++  // Espalhados pela área toda (a grade é alta), não só no meio, para aparecerem nos vãos.
++  controls: {
++    height: TALL,
++    render: () => (
++      <>
++        <Gamepad x={20} y={110} s={270} rotate={-12} />
++        <Gamepad x={600} y={40} s={230} rotate={-8} />
++        <Hourglass x={990} y={20} s={150} rotate={10} />
++        <Play x={1180} y={330} r={70} rotate={8} />
++        <Gamepad x={1290} y={70} s={260} rotate={12} />
++        <Play x={260} y={600} r={66} rotate={-6} />
++        <Gamepad x={640} y={560} s={300} rotate={-6} />
++        <Hourglass x={1420} y={560} s={190} rotate={12} />
++        <Gamepad x={40} y={980} s={240} rotate={10} />
++        <Hourglass x={820} y={1080} s={160} rotate={-14} />
++        <Play x={1180} y={1000} r={72} rotate={4} />
++        <Gamepad x={1300} y={1140} s={250} rotate={-14} />
++        <Play x={560} y={1290} r={50} rotate={0} />
++      </>
++    ),
++  },
++  charts: { height: TALL, render: Charts },
++  podium: { height: H, render: Podium },
+ };
+ 
+ /**
+@@ -219,11 +268,11 @@ const SCENES: Record<ArtKind, () => ReactNode> = {
+  * e de baixo. Vai dentro de um elemento com `relative isolate`; a cor vem de --accent.
+  */
+ export function SectionArt({ kind, className = '' }: { kind: ArtKind; className?: string }) {
+-  const Scene = SCENES[kind];
++  const scene = SCENES[kind];
+   return (
+     <svg
+       aria-hidden
+-      viewBox={`0 0 ${W} ${H}`}
++      viewBox={`0 0 ${W} ${scene.height}`}
+       preserveAspectRatio="xMidYMid slice"
+       className={`section-art pointer-events-none absolute left-1/2 -z-10 w-screen -translate-x-1/2 ${className || '-top-20 h-[calc(100%+8rem)]'}`}
+       fill="none"
+@@ -231,7 +280,7 @@ export function SectionArt({ kind, className = '' }: { kind: ArtKind; className?
+       strokeWidth={2}
+       strokeLinecap="round"
+     >
+-      <Scene />
++      {scene.render()}
+     </svg>
+   );
+ }
+diff --git a/apps/web/src/lib/sections.ts b/apps/web/src/lib/sections.ts
+index d2c4875..22cf0fe 100644
+--- a/apps/web/src/lib/sections.ts
++++ b/apps/web/src/lib/sections.ts
+@@ -21,7 +21,7 @@ export interface SectionDef {
+   icon: LucideIcon;
+   /** Uma linha sob o título, dizendo o que entra na lista. */
+   subtitle: string;
+-  /** Ilustração de traço atrás da seção, na home. */
++  /** Ilustração de traço atrás da seção, na home. Seções vizinhas com a mesma dividem uma só. */
+   art: ArtKind;
+   emptyMessage: string;
+   /** Ordenações oferecidas na lista completa (a primeira é a padrão). */
+@@ -52,7 +52,7 @@ export const SECTIONS: SectionDef[] = [
+     layout: 'carousel',
+     variant: 'tickets',
+     icon: Gift,
+-    art: 'gifts',
++    art: 'offers',
+     subtitle: 'Resgate enquanto durar e o jogo fica na sua conta',
+     emptyMessage: 'Nenhum jogo de PC está sendo dado de graça agora. Volte em alguns dias.',
+     // Todos estão a 100%: no lugar de "desconto", o valor original.
+@@ -66,7 +66,7 @@ export const SECTIONS: SectionDef[] = [
+     accent: 'var(--accent-deal)',
+     layout: 'carousel',
+     icon: BadgePercent,
+-    art: 'tags',
++    art: 'offers',
+     subtitle: 'De 70% a 99% de desconto, em reais',
+     emptyMessage: 'Nenhum jogo com 70% ou mais de desconto agora.',
+     sorts: GAME_SORTS,
+diff --git a/apps/web/src/pages/HomePage.tsx b/apps/web/src/pages/HomePage.tsx
+index 7a6e05e..1780c90 100644
+--- a/apps/web/src/pages/HomePage.tsx
++++ b/apps/web/src/pages/HomePage.tsx
+@@ -3,7 +3,27 @@ import { GameCarousel } from '../components/game/GameCarousel';
+ import { GameGridSection } from '../components/game/GameGridSection';
+ import { GroupHero } from '../components/home/GroupHero';
+ import { QuickTiles } from '../components/home/QuickTiles';
+-import { SECTIONS } from '../lib/sections';
++import { SectionArt } from '../components/home/SectionArt';
++import { SECTIONS, type SectionDef } from '../lib/sections';
++
++/** Junta seções vizinhas que usam a mesma ilustração de fundo (ex.: grátis + ofertas). */
++function groupByArt(sections: SectionDef[]): SectionDef[][] {
++  const groups: SectionDef[][] = [];
++  for (const section of sections) {
++    const last = groups.at(-1);
++    if (last && last[0]!.art === section.art) last.push(section);
++    else groups.push([section]);
++  }
++  return groups;
++}
++
++function HomeSection({ section, withArt }: { section: SectionDef; withArt: boolean }) {
++  return section.layout === 'grid' ? (
++    <GameGridSection section={section} withArt={withArt} />
++  ) : (
++    <GameCarousel section={section} withArt={withArt} />
++  );
++}
+ 
+ export function HomePage() {
+   useEffect(() => {
+@@ -15,11 +35,17 @@ export function HomePage() {
+       <h1 className="sr-only">Descobrir jogos</h1>
+       <GroupHero />
+       <QuickTiles />
+-      {SECTIONS.map((section) =>
+-        section.layout === 'grid' ? (
+-          <GameGridSection key={section.slug} section={section} />
++      {groupByArt(SECTIONS).map((group) =>
++        group.length === 1 ? (
++          <HomeSection key={group[0]!.slug} section={group[0]!} withArt />
+         ) : (
+-          <GameCarousel key={section.slug} section={section} />
++          // Uma ilustração só, atrás do grupo todo.
++          <div key={group.map((s) => s.slug).join('+')} className="relative isolate">
++            <SectionArt kind={group[0]!.art} />
++            {group.map((section) => (
++              <HomeSection key={section.slug} section={section} withArt={false} />
++            ))}
++          </div>
+         ),
+       )}
+     </>
+diff --git a/apps/web/src/styles/index.css b/apps/web/src/styles/index.css
+index 2ca58e3..69ca461 100644
+--- a/apps/web/src/styles/index.css
++++ b/apps/web/src/styles/index.css
+@@ -393,8 +393,9 @@
+   .section-art {
+     color: var(--accent, var(--muted));
+     opacity: var(--art-opacity);
+-    -webkit-mask-image: linear-gradient(180deg, transparent, #000 28%, #000 70%, transparent);
+-    mask-image: linear-gradient(180deg, transparent, #000 28%, #000 70%, transparent);
++    /* Some em 6rem nas pontas (não em %): em seções altas, a área do título continua visível. */
++    -webkit-mask-image: linear-gradient(180deg, transparent, #000 6rem, #000 calc(100% - 7rem), transparent);
++    mask-image: linear-gradient(180deg, transparent, #000 6rem, #000 calc(100% - 7rem), transparent);
+   }
+   .section-art * {
+     vector-effect: non-scaling-stroke;

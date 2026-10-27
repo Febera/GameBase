@@ -1,9 +1,10 @@
-import type { PointerEvent } from 'react';
+import type { PointerEvent, ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { CardModel } from '../../lib/cards';
 
 interface Props {
   card: CardModel;
+  featured?: boolean;
 }
 
 /** Inclinação máxima da capa, em graus, quando o mouse está na borda. */
@@ -27,16 +28,20 @@ function onLeave(event: PointerEvent<HTMLElement>) {
   tilt?.style.setProperty('--ry', '0deg');
 }
 
-/**
- * Card de jogo: capa com o nome no canto inferior direito.
- * Ofertas e giveaways acrescentam uma etiqueta (desconto, prazo) e preço/loja sob o nome.
- * A cor da etiqueta vem da variável --accent da seção.
- */
-export function Card({ card }: Props) {
-  const className = 'card-link group block rounded-md';
-  const content = <CardContent card={card} />;
-  const handlers = { onPointerMove: onMove, onPointerLeave: onLeave };
-
+/** Link de um card: página do GameBase, ou nova aba quando o destino é fora do site. */
+export function CardAnchor({
+  card,
+  className,
+  children,
+  tilt = false,
+}: {
+  card: CardModel;
+  className: string;
+  children: ReactNode;
+  /** Liga a inclinação da capa pela posição do mouse. */
+  tilt?: boolean;
+}) {
+  const handlers = tilt ? { onPointerMove: onMove, onPointerLeave: onLeave } : {};
   return card.external ? (
     <a
       href={card.href}
@@ -46,24 +51,44 @@ export function Card({ card }: Props) {
       className={className}
       {...handlers}
     >
-      {content}
+      {children}
     </a>
   ) : (
     <Link to={card.href} aria-label={card.label} className={className} {...handlers}>
-      {content}
+      {children}
     </Link>
   );
 }
 
-function CardContent({ card }: Props) {
+/**
+ * Card de jogo: capa com o nome no canto inferior direito.
+ * Ofertas e giveaways acrescentam uma etiqueta (desconto, prazo) e preço/loja sob o nome.
+ * A cor da etiqueta vem da variável --accent da seção.
+ * Com `featured`, o card ocupa a altura da célula (grade com o primeiro jogo em 2 × 2).
+ */
+export function Card({ card, featured = false }: Props) {
+  return (
+    <CardAnchor card={card} tilt className={`card-link group block rounded-md ${featured ? 'md:h-full' : ''}`}>
+      <CardContent card={card} featured={featured} />
+    </CardAnchor>
+  );
+}
+
+function CardContent({ card, featured = false }: Props) {
   const hasDetails = Boolean(card.price || card.note);
   const image = card.cover ?? (card.fallbackImage ? { url: card.fallbackImage, url2x: card.fallbackImage } : null);
   return (
-    <div className="card-tilt relative aspect-[264/374] overflow-hidden rounded-md bg-surface-2 ring-1 ring-line">
+    <div
+      className={[
+        'card-tilt relative aspect-[264/374] overflow-hidden rounded-md bg-surface-2 ring-1 ring-line',
+        featured ? 'md:aspect-auto md:h-full' : '',
+      ].join(' ')}
+    >
       {image ? (
         <img
-          src={image.url}
-          srcSet={image.url2x !== image.url ? `${image.url} 1x, ${image.url2x} 2x` : undefined}
+          // No destaque a capa fica com o dobro do tamanho: já começa na versão grande.
+          src={featured ? image.url2x : image.url}
+          srcSet={!featured && image.url2x !== image.url ? `${image.url} 1x, ${image.url2x} 2x` : undefined}
           alt=""
           loading="lazy"
           decoding="async"
@@ -93,7 +118,11 @@ function CardContent({ card }: Props) {
       )}
 
       <div className="absolute inset-x-3 bottom-2.5 text-right text-white">
-        <span className="line-clamp-2 font-display text-[0.95rem] font-semibold leading-tight">{card.title}</span>
+        <span
+          className={`line-clamp-2 font-display font-semibold leading-tight ${featured ? 'text-[0.95rem] md:text-2xl md:font-bold' : 'text-[0.95rem]'}`}
+        >
+          {card.title}
+        </span>
         {card.price && (
           <p className="mt-1 text-sm leading-tight">
             {card.price.previous && <s className="mr-1.5 text-xs text-white/60 tabular-nums">{card.price.previous}</s>}
@@ -106,6 +135,6 @@ function CardContent({ card }: Props) {
   );
 }
 
-export function CardSkeleton() {
-  return <div aria-hidden className="skeleton aspect-[264/374] rounded-md" />;
+export function CardSkeleton({ featured = false }: { featured?: boolean }) {
+  return <div aria-hidden className={`skeleton aspect-[264/374] rounded-md ${featured ? 'md:aspect-auto md:h-full' : ''}`} />;
 }
