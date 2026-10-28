@@ -29,7 +29,17 @@ interface ReviewSummary {
 export interface SteamClient {
   /** Dados da loja de um jogo, já no formato guardado no banco. */
   appDetails(appId: number): Promise<SteamApp>;
+  /**
+   * Preços de vários jogos numa consulta só (filters=price_overview). Só traz quem a Steam
+   * respondeu: null = sem preço (grátis, não lançado); ausente = sem resposta para o jogo.
+   */
+  prices(appIds: number[]): Promise<Map<number, SteamApp['price']>>;
+  /** Só as avaliações de um jogo (null quando não vieram). */
+  reviews(appId: number): Promise<SteamApp['reviews']>;
 }
+
+/** Quantos jogos por consulta de preços em lote. */
+export const PRICE_BATCH_SIZE = 50;
 
 /** Converte a resposta da Steam. `null` quando a loja não tem a página do jogo. */
 export function parseAppDetails(
@@ -156,7 +166,44 @@ export function createSteamClient({
     }
   }
 
+  async function getJson<T>(url: string): Promise<T> {
+    let res: Response;
+    try {
+      res = await fetchFn(url, { headers: { Accept: 'application/json' } });
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      throw new UpstreamError('steam', 0, `Sem conexão com a Steam: ${reason}`);
+    }
+    if (!res.ok) throw new UpstreamError('steam', res.status, `A Steam respondeu HTTP ${res.status}.`);
+    return (await res.json()) as T;
+  }
+
   return {
+    async prices(appIds) {
+      const result = new Map<number, SteamApp['price']>();
+      if (appIds.length === 0) return result;
+      const body = await getJson<Record<string, { success: boolean; data?: AppDetailsData | unknown[] }> | null>(
+        `https://store.steampowered.com/api/appdetails?appids=${appIds.join(',')}&cc=br&filters=price_overview`,
+      );
+      for (const appId of appIds) {
+        const entry = body?.[String(appId)];
+        if (!entry?.success) continue;
+        // Sem preço, a Steam devolve "data": [] (lista vazia) em vez de um objeto.
+        const price = !Array.isArray(entry.data) ? entry.data?.price_overview : undefined;
+        result.set(
+          appId,
+          price
+            ? { currency: price.currency, initial: price.initial, final: price.final, discountPercent: price.discount_percent }
+            : null,
+        );
+      }
+      return result;
+    },
+
+    async reviews(appId) {
+      return parseReviews(await reviewSummary(appId));
+    },
+
     async appDetails(appId) {
       // Sem "filters": o filtro "basic" removeria os descritores de conteúdo.
       const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=br&l=portuguese`;

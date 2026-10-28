@@ -200,7 +200,8 @@ export function createGamesService({
 
   return {
     async getNewPopular(offset, limit, adultMode, category, sort = 'reviews', order = 'desc') {
-      const candidates = await cache.getOrSet('games:new-popular', CACHE_TTL_MS, buildCandidates);
+      // Lista pesada: depois da primeira vez, serve a versão anterior enquanto recarrega (e sobrevive à hibernação).
+      const candidates = await cache.getOrSetStale('games:new-popular', CACHE_TTL_MS, buildCandidates);
       if (!category) {
         const all = visible(
           candidates.map((c) => ({ item: c.card, adult: c.adult })),

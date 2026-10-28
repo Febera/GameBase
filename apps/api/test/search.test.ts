@@ -142,6 +142,25 @@ describe('searchService', () => {
     expect(page.pending).toBe(1); // o 5º ainda não tem dados da Steam
   });
 
+  it('"mais bem avaliados" soma os candidatos do ranking do banco, com os mesmos filtros', async () => {
+    const { igdb, bodies } = igdbWith(3);
+    const service = createSearchService({
+      igdb,
+      cache: new MemoryCache(),
+      adult: adultFilter(),
+      lookup,
+      steam: steamSyncStub([1, 2, 3].map((i) => steamApp(1000 + i, { reviews: { percent: 90, total: 1000 * i } }))),
+      topRatedIgdbIds: async () => [7, 8],
+    });
+    await service.search({ sort: 'rating', genres: [5] }, 0, 10, 'hide');
+    const extra = bodies.find((b) => b.includes('id = (7,8)'));
+    expect(extra).toContain('genres = (5)');
+    // Sem "nota", o banco não é consultado.
+    bodies.length = 0;
+    await service.search({ sort: 'popular' }, 0, 10, 'hide');
+    expect(bodies.some((b) => b.includes('id = ('))).toBe(false);
+  });
+
   it('todas as opções marcadas equivalem a nenhuma', () => {
     expect(normalizeFilters({ prices: ['paid', 'free', 'demo'], stores: STORES.map((s) => s.key) })).toMatchObject({
       prices: [],

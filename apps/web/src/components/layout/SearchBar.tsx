@@ -1,11 +1,18 @@
 import { ArrowRight, Search, SlidersHorizontal } from 'lucide-react';
-import { type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, useEffect, useId, useRef, useState } from 'react';
+import { type CSSProperties, type FormEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, useEffect, useId, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
+import type { SearchSuggestion } from '@rj/shared';
 import { useDebounced, useSuggestions } from '../../hooks/useSearch';
 import { focusFiltersSidebar } from '../../lib/events';
 import { QUICK_SEARCHES } from '../../lib/quickSearches';
 import { parseSearch, toSearchParams } from '../../lib/searchParams';
 import { QUICK_ICONS } from '../ui/quickIcons';
+
+/**
+ * Lista vazia fixa: com `= []` cada renderização criaria uma lista nova, e o efeito que zera o
+ * item ativo quando as sugestões mudam rodaria sempre, desfazendo o destaque das buscas rápidas.
+ */
+const NO_SUGGESTIONS: SearchSuggestion[] = [];
 
 /** Item da lista navegável pelo teclado: sugestão de jogo, busca rápida ou ação. */
 type Option = { id: string; run: () => void };
@@ -34,7 +41,7 @@ export function SearchBar() {
   }, [location.pathname, params]);
 
   const debounced = useDebounced(value, 250);
-  const { data: suggestions = [] } = useSuggestions(debounced, focused);
+  const { data: suggestions = NO_SUGGESTIONS } = useSuggestions(debounced, focused);
   const typing = value.trim().length >= 2;
   const showQuick = focused && !dismissed && value.trim() === '';
   const showSuggestions = focused && !dismissed && typing && suggestions.length > 0;
@@ -120,6 +127,8 @@ export function SearchBar() {
     id: `${listId}-${options[index]?.id}`,
     role: 'option' as const,
     'aria-selected': index === active,
+    // Destaque do item ativo (mouse ou setas do teclado): estilos em .menu-item[data-active].
+    'data-active': index === active ? '' : undefined,
     onMouseDown: (e: ReactMouseEvent) => e.preventDefault(),
     onClick: () => options[index]?.run(),
     // onMouseMove (e não onMouseEnter): a lista abrindo sob o cursor parado não destaca nada.
@@ -180,12 +189,13 @@ export function SearchBar() {
                     <div
                       key={quick.key}
                       {...optionProps(i)}
-                      className={`flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 ${i === active ? 'bg-surface-2' : ''}`}
+                      className="menu-item flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5"
+                      style={{ '--item': color } as CSSProperties}
                     >
-                      <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-2" style={{ color }}>
+                      <span className="menu-icon flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-2" style={{ color }}>
                         <Icon className="size-[18px]" aria-hidden />
                       </span>
-                      <span className="min-w-0">
+                      <span className="menu-text min-w-0">
                         <span className="block text-sm font-bold">{quick.label}</span>
                         <span className="block truncate text-xs text-muted">{quick.description}</span>
                       </span>
@@ -195,36 +205,44 @@ export function SearchBar() {
               </div>
               <div
                 {...optionProps(QUICK_SEARCHES.length)}
-                className={`flex cursor-pointer items-center gap-3 border-t border-line px-4 py-3.5 ${active === QUICK_SEARCHES.length ? 'bg-surface-2' : 'bg-bg/40'}`}
+                className="menu-item menu-item-footer flex cursor-pointer items-center gap-3 border-t border-line bg-bg/40 px-4 py-3.5"
+                style={{ '--item': 'var(--brand-b)' } as CSSProperties}
               >
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-brand-b text-[#06202b]">
+                <span className="menu-icon flex size-9 shrink-0 items-center justify-center rounded-md bg-brand-b text-[#06202b]">
                   <SlidersHorizontal className="size-[18px]" aria-hidden />
                 </span>
-                <span className="min-w-0 flex-1">
+                <span className="menu-text min-w-0 flex-1">
                   <span className="block text-sm font-bold text-brand-b">Abrir busca avançada</span>
                   <span className="block truncate text-xs text-muted">Jogadores, preço, lojas, gêneros, ano, nota e duplicatas</span>
                 </span>
-                <ArrowRight className="size-[18px] text-brand-b" aria-hidden />
+                <ArrowRight className="menu-arrow size-[18px] text-brand-b" aria-hidden />
               </div>
             </>
           ) : (
             <ul className="py-1">
               {suggestions.map((s, i) => (
-                <li key={s.id} {...optionProps(i)} className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${i === active ? 'bg-surface-2' : ''}`}>
-                  <span className="h-12 w-9 shrink-0 overflow-hidden rounded-sm bg-surface-2">
+                <li
+                  key={s.id}
+                  {...optionProps(i)}
+                  className="menu-item flex cursor-pointer items-center gap-3 px-3 py-2"
+                  style={{ '--item': 'var(--brand-b)' } as CSSProperties}
+                >
+                  <span className="menu-icon h-12 w-9 shrink-0 overflow-hidden rounded-sm bg-surface-2">
                     {s.cover && <img src={s.cover} alt="" className="size-full object-cover" />}
                   </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold">{s.name}</span>
+                  <span className="menu-text min-w-0">
+                    <span className="menu-title block truncate text-sm font-semibold">{s.name}</span>
                     {s.year && <span className="text-xs text-muted tabular-nums">{s.year}</span>}
                   </span>
                 </li>
               ))}
               <li
                 {...optionProps(suggestions.length)}
-                className={`cursor-pointer border-t border-line px-3 py-2 text-sm font-semibold text-brand-b ${active === suggestions.length ? 'bg-surface-2' : ''}`}
+                className="menu-item flex cursor-pointer items-center gap-2 border-t border-line px-3 py-2 text-sm font-semibold text-brand-b"
+                style={{ '--item': 'var(--brand-b)' } as CSSProperties}
               >
-                Ver todos os resultados para “{value.trim()}”
+                <span className="menu-text min-w-0 flex-1 truncate">Ver todos os resultados para “{value.trim()}”</span>
+                <ArrowRight className="menu-arrow size-4 shrink-0" aria-hidden />
               </li>
             </ul>
           )}

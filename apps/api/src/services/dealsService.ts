@@ -59,7 +59,8 @@ export async function withReviews<T extends { reviewCount: number | null }>(
   if (steam && appIds.length) {
     try {
       // Listas grandes vão para a fila lenta: não atrasam os jogos que alguém está vendo.
-      steam.refresh(appIds, 'low').catch(() => {});
+      // Preço não: as ofertas já trazem o preço da ITAD. Da Steam só interessam avaliações e conteúdo adulto.
+      steam.refresh(appIds, 'low', { skipPrice: true }).catch(() => {});
       apps = (await steam.read(appIds)).apps;
     } catch (error) {
       log(`Avaliações da Steam indisponíveis: ${String(error)}`);

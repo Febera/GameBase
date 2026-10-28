@@ -1,6 +1,6 @@
 import type { AdultMode, GameCard, GameDetails, PlayerCounts } from '@rj/shared';
 import type { MemoryCache } from '../cache/memoryCache.js';
-import type { IgdbClient } from '../clients/igdb.js';
+import { type IgdbClient, type IgdbNamedQuery, igdbMultiquery } from '../clients/igdb.js';
 import type { ItadClient } from '../clients/itad.js';
 import { AdultContentError, NotFoundError } from '../lib/errors.js';
 import { type Clock, systemClock } from '../lib/time.js';
@@ -113,6 +113,37 @@ export function createGameDetailsService({
   log = () => {},
 }: Deps): GameDetailsService {
   const pricing = givenPricing ?? createItadPricing({ itad, cache, now, log });
+  /**
+   * Similares e quais deles (e o próprio jogo) são adultos. Com multiquery, as duas consultas
+   * vão à IGDB numa requisição só.
+   */
+  async function similarAndAdult(id: number, similarIds: number[]): Promise<{ similar: IgdbGame[]; adultIds: Set<number> }> {
+    const similarQuery = `fields ${CARD_FIELDS}; where id = (${similarIds.join(',')}) & platforms = (${PC_PLATFORM_ID}) & cover != null; limit 30;`;
+    const condition = adult.adultCondition ? await adult.adultCondition() : undefined;
+    if (condition === undefined) {
+      // Filtro sem condição exposta (ex.: nos testes): duas consultas, como antes.
+      const [similar, adultIds] = await Promise.all([
+        similarIds.length ? igdb.query<IgdbGame>('games', similarQuery) : Promise.resolve([]),
+        adult.adultIgdbIds([id, ...similarIds]),
+      ]);
+      return { similar, adultIds };
+    }
+    const queries: IgdbNamedQuery[] = [];
+    if (similarIds.length) queries.push({ name: 'similar', endpoint: 'games', body: similarQuery });
+    if (condition) {
+      queries.push({
+        name: 'adult',
+        endpoint: 'games',
+        body: `fields id; where id = (${[id, ...similarIds].join(',')}) & ${condition}; limit 500;`,
+      });
+    }
+    const result = await igdbMultiquery(igdb, queries);
+    return {
+      similar: (result.similar ?? []) as IgdbGame[],
+      adultIds: new Set(((result.adult ?? []) as { id: number }[]).map((r) => r.id)),
+    };
+  }
+
   /** Parte que muda pouco: dados da IGDB, similares e App ID da Steam. */
   function loadBase(id: number) {
     return cache.getOrSet(`game:${id}`, DETAILS_TTL_MS, async () => {
@@ -120,14 +151,8 @@ export function createGameDetailsService({
       if (!game) throw new NotFoundError(`Jogo ${id} não encontrado.`);
 
       const similarIds = (game.similar_games ?? []).slice(0, 30);
-      const [similar, adultIds, steamIds] = await Promise.all([
-        similarIds.length
-          ? igdb.query<IgdbGame>(
-              'games',
-              `fields ${CARD_FIELDS}; where id = (${similarIds.join(',')}) & platforms = (${PC_PLATFORM_ID}) & cover != null; limit 30;`,
-            )
-          : Promise.resolve([]),
-        adult.adultIgdbIds([id, ...similarIds]),
+      const [{ similar, adultIds }, steamIds] = await Promise.all([
+        similarAndAdult(id, similarIds),
         lookup.steamAppIdsFor([id, ...similarIds]),
       ]);
       // Mantém a ordem de relevância da IGDB.

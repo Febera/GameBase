@@ -225,16 +225,29 @@ Limites conhecidos:
 A loja da Steam não tem API oficial para isso e aceita poucas consultas (cerca de 200 a cada
 5 minutos). Por isso:
 
-1. O servidor descobre o App ID da Steam de cada jogo pela IGDB.
-2. Os jogos que faltam no banco (ou com dados de mais de 12 horas) entram numa fila.
-3. A fila é processada um jogo a cada 1,6 s, em segundo plano, e tudo vai para o banco.
+1. O servidor descobre o App ID da Steam de cada jogo pela IGDB e guarda o vínculo no banco
+   (tabela `igdb_steam`): a IGDB só é consultada de novo para jogos novos. Vínculos valem 30 dias;
+   "sem Steam" é conferido de novo em 7.
+2. O que falta ou venceu de cada jogo entra numa fila, e cada dado vence no seu ritmo:
+   - **preço**: 12 horas, atualizado **em lote** (até 50 jogos por consulta);
+   - **avaliações**: 7 dias (Steam; se não vierem, pela IsThereAnyDeal);
+   - **detalhes** (grátis, demo, conteúdo adulto): 7 dias, numa consulta completa que também
+     traz preço e avaliações.
+3. A fila faz uma consulta a cada 1,6 s, em segundo plano, e tudo vai para o banco.
 4. As listas usam o que já está no banco; a home se atualiza sozinha a cada 30 s enquanto
    houver jogos pendentes.
 
-Cada jogo custa duas consultas: os dados da loja (preço, demo, descritores) e as avaliações
-(total e % positivas). A fila tem duas prioridades: jogos que alguém está vendo agora passam na
-frente; as listas grandes (até 4 mil ofertas) entram na fila lenta. Com tudo, o preenchimento
-inicial leva cerca de 4 horas em segundo plano; depois, só os novos e os desatualizados.
+A fila tem duas prioridades: jogos que alguém está vendo agora passam na frente; as listas
+grandes (até 4 mil ofertas) entram na fila lenta. As ofertas não gastam consultas com preço,
+que já vem da IsThereAnyDeal; da Steam só interessam avaliações e conteúdo adulto.
+
+"Mais bem avaliados" junta duas fontes de candidatos: os mais avaliados da IGDB e os jogos da
+Steam já guardados no banco com 500+ avaliações, ordenados pela média bayesiana direto no
+Postgres. Os filtros da busca valem para os dois.
+
+As listas pesadas (ofertas, giveaways, novos populares) também ficam salvas no banco (tabela
+`cache_snapshots`): quando o servidor acorda da hibernação, serve a última versão na hora e
+recarrega em segundo plano.
 
 Se a Steam pedir para desacelerar, a fila pausa 2 minutos e continua.
 
@@ -254,6 +267,7 @@ Se a Steam pedir para desacelerar, a fila pausa 2 minutos e continua.
 - [x] Ordenação das listas, avaliações da Steam, duplicatas/edições, card da busca, placar ao vivo
 - [x] Buscas rápidas e botão Filtros na barra, novo card da busca, barra translúcida na página do jogo
 - [x] Recomendações em pódio de escada, com preço, DEMO e jogadores
+- [x] Desempenho: vínculos IGDB → Steam no banco, prazos por dado, preços em lote, ranking no Postgres, listas salvas, multiquery da IGDB
 - [x] Home: destaque do placar do grupo, atalhos, cabeçalhos com ícone, cupons, grade com destaque, ilustrações de fundo e grão
 
 Resumo das decisões e do contexto do projeto: [`CONTEXTO.md`](CONTEXTO.md).

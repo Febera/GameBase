@@ -380,6 +380,57 @@
     }
   }
 
+  /*
+   * Itens do menu da barra de pesquisa. O destaque vale para o mouse e para as setas do
+   * teclado (os dois definem o item ativo): fundo tingido pela cor do item (--item), barra
+   * colorida à esquerda, ícone que cresce um pouco e texto que anda 2px; a seta do rodapé avança.
+   */
+  .menu-item {
+    position: relative;
+    transition: background-color var(--dur-2) var(--ease-out-quart);
+  }
+  .menu-item::before {
+    content: '';
+    position: absolute;
+    inset: 0.55rem auto 0.55rem 0;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--item, var(--brand-b));
+    scale: 1 0;
+    transition: scale var(--dur-2) var(--ease-out-quart);
+  }
+  .menu-item[data-active] {
+    background: color-mix(in srgb, var(--item, var(--brand-b)) 10%, var(--surface-2));
+  }
+  .menu-item[data-active]::before {
+    scale: 1 1;
+  }
+  .menu-icon,
+  .menu-text,
+  .menu-arrow {
+    transition:
+      scale var(--dur-2) var(--ease-out-quart),
+      translate var(--dur-2) var(--ease-out-quart),
+      background-color var(--dur-2) var(--ease-out-quart);
+  }
+  .menu-item[data-active] .menu-icon {
+    scale: 1.08;
+    background-color: color-mix(in srgb, var(--item, var(--brand-b)) 18%, var(--surface));
+  }
+  .menu-item[data-active] .menu-text {
+    translate: 2px 0;
+  }
+  .menu-item[data-active] .menu-arrow {
+    translate: 4px 0;
+  }
+  .menu-item[data-active] .menu-title {
+    color: var(--brand-b);
+  }
+  /* O ícone do rodapé já é azul cheio: no destaque ele só cresce. */
+  .menu-item-footer[data-active] .menu-icon {
+    background-color: var(--brand-b);
+  }
+
   /* Imagem com fusão (CrossfadeImage): entra transparente e aparece quando carrega. */
   .xfade {
     opacity: 0;

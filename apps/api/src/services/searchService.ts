@@ -72,6 +72,11 @@ interface Deps {
   steam: SteamSync | null;
   /** Para a validade das promoções da Steam (opcional). */
   itad?: ItadClient;
+  /**
+   * Jogos da IGDB mais bem avaliados entre os que o banco já conhece (ranking da Steam
+   * calculado no Postgres). Entram como candidatos extras de "Mais bem avaliados".
+   */
+  topRatedIgdbIds?: () => Promise<number[]>;
   now?: Clock;
   log?: (message: string) => void;
 }
@@ -124,6 +129,7 @@ export function createSearchService({
   lookup,
   steam,
   itad,
+  topRatedIgdbIds,
   now = systemClock,
   log = () => {},
 }: Deps): SearchService {
@@ -206,7 +212,24 @@ export function createSearchService({
         built.sort ? `sort ${built.sort};` : '',
         `limit ${SEARCH_WINDOW};`,
       ].join(' ');
-      const games = await igdb.query<IgdbSearchGame>('games', body);
+      const popular = await igdb.query<IgdbSearchGame>('games', body);
+      // "Mais bem avaliados": soma os mais bem avaliados que o banco já conhece, com os mesmos filtros.
+      let rated: IgdbSearchGame[] = [];
+      if (filters.sort === 'rating' && topRatedIgdbIds) {
+        try {
+          const ids = await topRatedIgdbIds();
+          if (ids.length) {
+            rated = await igdb.query<IgdbSearchGame>(
+              'games',
+              `fields ${SEARCH_FIELDS}; where ${built.where} & id = (${ids.join(',')}); limit ${SEARCH_WINDOW};`,
+            );
+          }
+        } catch (error) {
+          log(`Busca: ranking do banco indisponível, seguindo só com a IGDB. ${String(error)}`);
+        }
+      }
+      const seen = new Set<number>();
+      const games = [...popular, ...rated].filter((g) => !seen.has(g.id) && Boolean(seen.add(g.id)));
 
       const ids = games.map((g) => g.id);
       const [adultIds, steamIds] = await Promise.all([adult.adultIgdbIds(ids), lookup.steamAppIdsFor(ids)]);
@@ -278,7 +301,7 @@ export function createSearchService({
         } else if (
           byRating &&
           c.steamAppId &&
-          (!app || (app.found && !app.reviews && app.fetchedAt.getTime() < now() - MISSING_REVIEWS_RETRY_MS))
+          (!app || (app.found && !app.reviews && (app.reviewsFetchedAt ?? app.fetchedAt).getTime() < now() - MISSING_REVIEWS_RETRY_MS))
         ) {
           // Ainda sem dados (ou sem avaliações) da Steam: volta quando a fila chegar nele.
           pending++;

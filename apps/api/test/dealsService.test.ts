@@ -119,7 +119,7 @@ describe('dealsService: avaliações e ordenação', () => {
       ['c', 200],
       ['a', 50],
     ]);
-    expect(refresh).toHaveBeenCalledWith(expect.arrayContaining([1, 2, 3]), 'low');
+    expect(refresh).toHaveBeenCalledWith(expect.arrayContaining([1, 2, 3]), 'low', { skipPrice: true });
     expect((await service.getDeals(0, 10, 'hide', 'discount', 'asc')).items.map((d) => d.id)).toEqual(['c', 'a', 'b']);
   });
 });

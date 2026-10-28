@@ -57,4 +57,58 @@ describe('MemoryCache', () => {
     await vi.waitFor(() => expect(loader).toHaveBeenCalledTimes(2));
     expect(await cache.getOrSetStale('k', 1000, loader)).toBe(2);
   });
+
+  it('servidor recém-acordado: serve a lista salva no banco e recarrega em segundo plano', async () => {
+    const clock = fakeClock();
+    const saved = new Map<string, { value: unknown; savedAt: Date }>([
+      ['lista', { value: ['antiga'], savedAt: new Date(clock.now() - 60 * 60 * 1000) }],
+    ]);
+    const store = {
+      load: vi.fn(async (key: string) => saved.get(key) ?? null),
+      save: vi.fn(async (key: string, value: unknown, savedAt: Date) => void saved.set(key, { value, savedAt })),
+    };
+    const cache = new MemoryCache(500, clock.now);
+    cache.attachStore(store);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const loader = vi.fn(async () => (await gate, ['nova']));
+
+    expect(await cache.getOrSetStale('lista', 1000, loader)).toEqual(['antiga']); // na hora, do banco
+    expect(loader).toHaveBeenCalledOnce(); // recarga já começou
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(await cache.getOrSetStale('lista', 1000, loader)).toEqual(['nova']);
+    expect(saved.get('lista')?.value).toEqual(['nova']); // versão nova salva
+    expect(store.load).toHaveBeenCalledOnce();
+  });
+
+  it('versão salva há mais de 24 h não é servida: espera a carga', async () => {
+    const clock = fakeClock();
+    const store = {
+      load: async () => ({ value: ['velha'], savedAt: new Date(clock.now() - 25 * 60 * 60 * 1000) }),
+      save: async () => {},
+    };
+    const cache = new MemoryCache(500, clock.now);
+    cache.attachStore(store);
+    expect(await cache.getOrSetStale('lista', 1000, async () => ['nova'])).toEqual(['nova']);
+  });
+
+  it('banco fora do ar não quebra o cache', async () => {
+    const log = vi.fn();
+    const cache = new MemoryCache();
+    cache.attachStore(
+      {
+        load: async () => {
+          throw new Error('sem conexão');
+        },
+        save: async () => {
+          throw new Error('sem conexão');
+        },
+      },
+      log,
+    );
+    expect(await cache.getOrSetStale('x', 1000, async () => 42)).toBe(42);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(log).toHaveBeenCalledTimes(2);
+  });
 });

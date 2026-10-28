@@ -12,7 +12,7 @@ import { type Config, loadConfig } from './config.js';
 import { migrate, readMigrations } from './db/migrate.js';
 import { createPool } from './db/pool.js';
 import { createRecommendationsRepository, type RecommendationsRepository } from './db/recommendationsRepository.js';
-import { createSteamAppsRepository } from './db/steamAppsRepository.js';
+import { createSteamAppsRepository, type SteamAppsRepository } from './db/steamAppsRepository.js';
 import { describeUrlMismatch } from './db/urls.js';
 import { createAdultContentFilter } from './services/adultContent.js';
 import { createDealsService } from './services/dealsService.js';
@@ -25,6 +25,10 @@ import { createOfferService } from './services/offerService.js';
 import { createRecommendationsService } from './services/recommendationsService.js';
 import { createSearchService } from './services/searchService.js';
 import { withItadReviews } from './services/steamReviewsFallback.js';
+import { withPersistentSteamIds } from './services/persistentLookup.js';
+import { MIN_RATED_REVIEWS } from './services/sorting.js';
+import { createIgdbSteamRepository, type IgdbSteamRepository } from './db/igdbSteamRepository.js';
+import { createSnapshotRepository, type SnapshotStore } from './db/snapshotRepository.js';
 import { createSteamSync, type SteamSync } from './services/steamSync.js';
 
 /** Funciona tanto rodando de src/ (tsx) quanto de dist/ (build). */
@@ -39,6 +43,19 @@ type Log = (message: string) => void;
 interface DbServices {
   steam: SteamSync;
   recommendations: RecommendationsRepository;
+  igdbSteam: IgdbSteamRepository;
+  steamApps: SteamAppsRepository;
+  snapshots: SnapshotStore;
+}
+
+/** Quantos jogos do ranking do banco entram como candidatos de "Mais bem avaliados". */
+const TOP_RATED_CANDIDATES = 500;
+
+/** Os mais bem avaliados da Steam guardados no banco, convertidos para IDs da IGDB. */
+async function topRatedIgdbIds(database: DbServices): Promise<number[]> {
+  const appIds = await database.steamApps.topRated(MIN_RATED_REVIEWS, TOP_RATED_CANDIDATES);
+  const igdbByApp = await database.igdbSteam.findBySteam(appIds);
+  return appIds.flatMap((appId) => (igdbByApp.has(appId) ? [igdbByApp.get(appId)!] : []));
 }
 
 async function setupDatabase(config: Config, itad: ItadClient, warn: Log, info: Log): Promise<DbServices | null> {
@@ -66,14 +83,18 @@ async function setupDatabase(config: Config, itad: ItadClient, warn: Log, info: 
           (mismatch ?? 'Confira se DATABASE_URL e DATABASE_DIRECT_URL são do mesmo branch e banco.'),
       );
     }
+    const steamApps = createSteamAppsRepository(pool);
     return {
+      steamApps,
       steam: createSteamSync({
         // Avaliações: Steam direto; se não vierem, pela IsThereAnyDeal.
         steam: withItadReviews(createSteamClient({ log: warn }), itad, warn),
-        repo: createSteamAppsRepository(pool),
+        repo: steamApps,
         log: warn,
       }),
       recommendations: createRecommendationsRepository(pool),
+      igdbSteam: createIgdbSteamRepository(pool),
+      snapshots: createSnapshotRepository(pool),
     };
   } catch (error) {
     warn(`Banco indisponível: ${(error as Error).message} Grátis, demos, pagos e recomendações vão responder 503.`);
@@ -101,8 +122,13 @@ async function main() {
 
   const cache = new MemoryCache();
   const adult = createAdultContentFilter({ igdb, cache });
-  const lookup = createIgdbLookup(igdb);
   const database = await setupDatabase(config, itad, (m) => warn(m), (m) => info(m));
+  // Listas pesadas também ficam salvas no banco: o servidor acorda já com a última versão.
+  if (database) cache.attachStore(database.snapshots, (m) => warn(m));
+  // Com banco, o vínculo IGDB → Steam fica guardado e a IGDB só é consultada para jogos novos.
+  const lookup = database
+    ? withPersistentSteamIds(createIgdbLookup(igdb), database.igdbSteam, { log: (m) => warn(m) })
+    : createIgdbLookup(igdb);
   const steam = database?.steam ?? null;
   const deals = createDealsService({ itad, lookup, adult, cache, steam, log: (m) => warn(m) });
   const giveaways = createGiveawaysService({ gamerpower, deals, lookup, adult, itad, cache, steam, log: (m) => warn(m) });
@@ -125,7 +151,16 @@ async function main() {
     giveaways,
     deals,
     offers: createOfferService({ pricing, lookup, adult, giveaways }),
-    search: createSearchService({ igdb, cache, adult, lookup, steam, itad, log: (m) => warn(m) }),
+    search: createSearchService({
+      igdb,
+      cache,
+      adult,
+      lookup,
+      steam,
+      itad,
+      topRatedIgdbIds: database ? () => topRatedIgdbIds(database) : undefined,
+      log: (m) => warn(m),
+    }),
     recommendations: createRecommendationsService({
       repo: database?.recommendations ?? null,
       igdb,
