@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 /** Tema da ilustração de fundo de cada seção da home. */
-export type ArtKind = 'offers' | 'calendar' | 'controls' | 'charts' | 'podium';
+export type ArtKind = 'offers' | 'calendar' | 'controls' | 'charts' | 'podium' | 'search';
 
 /*
  * Ilustrações de traço fino, no estilo do calendário da loja da Steam: desenhadas aqui mesmo
@@ -203,6 +203,31 @@ function Play({ x, y, r, rotate }: { x: number; y: number; r: number; rotate: nu
   );
 }
 
+/** Lupa. */
+function Magnifier({ x, y, r, rotate }: { x: number; y: number; r: number; rotate: number }) {
+  return (
+    <g transform={`translate(${x} ${y}) rotate(${rotate})`}>
+      <circle cx={0} cy={0} r={r} />
+      <circle cx={0} cy={0} r={r * 0.72} strokeDasharray="4 10" />
+      <path d={`M${r * 0.72},${r * 0.72} L${r * 1.7},${r * 1.7}`} strokeWidth={3} />
+    </g>
+  );
+}
+
+/** Controles deslizantes de filtro: trilhos com um botão em cada. */
+function Sliders({ x, y, w, rotate, knobs }: { x: number; y: number; w: number; rotate: number; knobs: number[] }) {
+  return (
+    <g transform={`translate(${x} ${y}) rotate(${rotate})`}>
+      {knobs.map((k, i) => (
+        <g key={i}>
+          <line x1={0} y1={i * 46} x2={w} y2={i * 46} />
+          <circle cx={w * k} cy={i * 46} r={13} />
+        </g>
+      ))}
+    </g>
+  );
+}
+
 interface Scene {
   /** Altura do viewBox (a largura é sempre W). */
   height: number;
@@ -261,6 +286,22 @@ const SCENES: Record<ArtKind, Scene> = {
   },
   charts: { height: TALL, render: Charts },
   podium: { height: H, render: Podium },
+  // Busca: lupas, filtros deslizantes, controles e estrelas.
+  search: {
+    height: H,
+    render: () => (
+      <>
+        <Magnifier x={170} y={190} r={92} rotate={-8} />
+        <Sliders x={520} y={70} w={260} rotate={-6} knobs={[0.3, 0.75, 0.5]} />
+        <path d={star(940, 120, 40)} strokeLinejoin="round" />
+        <Gamepad x={1040} y={250} s={240} rotate={10} />
+        <Magnifier x={1420} y={110} r={56} rotate={12} />
+        <path d={star(700, 420, 26)} strokeLinejoin="round" />
+        <Sliders x={1340} y={380} w={200} rotate={8} knobs={[0.6, 0.2]} />
+        <path d={star(420, 470, 34)} strokeLinejoin="round" />
+      </>
+    ),
+  },
 };
 
 /**

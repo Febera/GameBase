@@ -1,5 +1,5 @@
 import type { SearchResult } from '@rj/shared';
-import { Ban, Users } from 'lucide-react';
+import { Ban, Trophy, Users } from 'lucide-react';
 import { Link } from 'react-router';
 import { formatDayMonth, formatMoney } from '../../lib/cards';
 import { reviewColor, reviewLabel } from '../gamepage/ReviewBar';
@@ -15,11 +15,34 @@ export function fullDate(iso: string): string {
   return new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+/** "80 mil", "1,2 mi": total de avaliações em formato curto. */
+export function compactCount(n: number): string {
+  return new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+}
+
+/** Lugar do jogo no placar do grupo, quando está nele. */
+export interface GroupPick {
+  rank: number;
+  upvotes: number;
+}
+
 /**
  * Linha de resultado no estilo da loja: arte larga; título grande e data no alto; avaliação e
  * jogadores na base, alinhados com o preço; à direita, a validade da promoção sobre o preço.
+ * Em "Mais bem avaliados", a posição aparece sobre a arte; jogos do placar ganham o selo dourado.
  */
-export function ResultRow({ result, coopFirst = false }: { result: SearchResult; coopFirst?: boolean }) {
+export function ResultRow({
+  result,
+  coopFirst = false,
+  rank,
+  group,
+}: {
+  result: SearchResult;
+  coopFirst?: boolean;
+  /** Posição na ordenação por nota (1, 2, 3…). */
+  rank?: number;
+  group?: GroupPick;
+}) {
   const players = playersSummary(result, coopFirst);
   const image = result.artwork ?? result.cover?.url ?? null;
   const reviews = result.steamReviews;
@@ -28,16 +51,23 @@ export function ResultRow({ result, coopFirst = false }: { result: SearchResult;
   return (
     <Link
       to={`/jogo/${result.id}`}
-      className="group grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-4 gap-y-3 rounded-md border border-line bg-surface p-2.5 transition-colors duration-150 hover:border-line-strong hover:bg-surface-2 sm:grid-cols-[11rem_minmax(0,1fr)] md:grid-cols-[15rem_minmax(0,1fr)_auto] md:items-stretch md:gap-6 md:pr-5"
+      className="result-row group grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-4 gap-y-3 rounded-md border border-line bg-surface p-2.5 sm:grid-cols-[11rem_minmax(0,1fr)] md:grid-cols-[15rem_minmax(0,1fr)_auto] md:items-stretch md:gap-6 md:pr-5"
     >
-      <div className="aspect-video self-start overflow-hidden rounded-md bg-surface-2">
+      <div className="result-art relative aspect-video self-start overflow-hidden rounded-md bg-surface-2">
         {image && (
-          <img
-            src={image}
-            alt=""
-            loading="lazy"
-            className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-          />
+          <img src={image} alt="" loading="lazy" className="result-img size-full object-cover" />
+        )}
+        <div aria-hidden className="card-glass pointer-events-none absolute inset-0" />
+        {rank !== undefined && (
+          <span
+            className={[
+              'absolute left-0 top-0 flex h-8 min-w-8 items-center justify-center rounded-br-md px-2 font-display text-base font-extrabold tabular-nums',
+              rank <= 3 ? 'bg-[linear-gradient(120deg,#fff1c2,#f3d27a_45%,#c48a1d)] text-[#2a1d02]' : 'bg-[#181818]/90 text-white',
+            ].join(' ')}
+          >
+            <span className="sr-only">Posição </span>
+            {rank}
+          </span>
         )}
       </div>
 
@@ -51,9 +81,24 @@ export function ResultRow({ result, coopFirst = false }: { result: SearchResult;
         </div>
         <p className="flex min-h-[22px] flex-wrap items-center gap-x-3.5 gap-y-1.5">
           {result.hasDemo && <DemoTag />}
+          {group && (
+            <span
+              className="inline-flex h-[22px] items-center gap-1.5 rounded-sm bg-[linear-gradient(120deg,#fff1c2,#f3d27a_45%,#c48a1d)] px-2 text-xs font-bold text-[#2a1d02]"
+              title={`${group.rank}º no placar do grupo`}
+            >
+              <Trophy className="size-3.5" aria-hidden />
+              Recomendado pelo grupo · {group.upvotes} {group.upvotes === 1 ? 'apoio' : 'apoios'}
+            </span>
+          )}
           {reviews && (
-            <span className="text-sm font-bold" style={{ color: reviewColor(reviews.percent) }}>
-              {reviewLabel(reviews.percent)}
+            <span className="text-sm">
+              <span className="font-bold" style={{ color: reviewColor(reviews.percent) }}>
+                {reviewLabel(reviews.percent)}
+              </span>
+              <span className="text-muted tabular-nums">
+                {' '}
+                · {reviews.percent}% de {compactCount(reviews.total)}
+              </span>
             </span>
           )}
           {players && (

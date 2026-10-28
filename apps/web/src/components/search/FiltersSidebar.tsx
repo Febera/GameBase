@@ -1,17 +1,18 @@
 import type { SearchFacets, SearchFilters } from '@rj/shared';
-import { ChevronDown, SlidersHorizontal } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Check as CheckIcon, ChevronDown, Gift, type LucideIcon, SlidersHorizontal, Tag, Timer, X } from 'lucide-react';
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react';
 import { OPEN_FILTERS_EVENT } from '../../lib/events';
 import { label } from '../../lib/labels';
 import { activeFilterCount } from '../../lib/searchParams';
 
-const PRICE_OPTIONS = [
-  ['free', 'Grátis'],
-  ['demo', 'Pago, com demo grátis'],
-  ['paid', 'Pago, sem demo'],
-] as const;
+const PRICE_OPTIONS: readonly (readonly ['free' | 'demo' | 'paid', string, LucideIcon, string])[] = [
+  ['free', 'Grátis', Gift, 'var(--accent-free)'],
+  ['demo', 'Pago com demo', Timer, 'var(--accent-new)'],
+  ['paid', 'Pago sem demo', Tag, 'var(--accent-paid)'],
+];
 
-const PLAYER_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 32, 64];
+/** Botões de "pelo menos N jogadores"; um valor fora da lista (vindo de um link) aparece também. */
+const PLAYER_OPTIONS = [2, 3, 4, 6, 8, 12, 16, 32];
 const RATING_OPTIONS = [60, 70, 80, 90];
 const GENRES_COLLAPSED = 8;
 
@@ -53,7 +54,7 @@ export function FiltersSidebar({ filters, facets, onChange, onClear, initiallyOp
     : genres.filter((g, i) => i < GENRES_COLLAPSED || filters.genres?.includes(g.id));
 
   return (
-    <aside ref={root} aria-label="Filtros" className="scroll-mt-24 lg:sticky lg:top-24 lg:self-start">
+    <aside ref={root} aria-label="Filtros" className="filters-aside scroll-mt-24 lg:sticky lg:self-start">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -72,31 +73,43 @@ export function FiltersSidebar({ filters, facets, onChange, onClear, initiallyOp
         id="filtros-corpo"
         className={`${open ? 'block' : 'hidden'} mt-3 overflow-hidden rounded-xl border border-line bg-surface lg:mt-0 lg:block lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto`}
       >
-        <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted">Filtros</h2>
+        <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
+          <h2 className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted">
+            <SlidersHorizontal className="size-3.5" aria-hidden />
+            Filtros
+            {count > 0 && <CountBadge n={count} />}
+          </h2>
           {count > 0 && (
-            <button type="button" onClick={onClear} className="text-xs font-semibold text-brand-b hover:underline">
-              Limpar ({count})
+            <button
+              type="button"
+              onClick={onClear}
+              className="inline-flex items-center gap-1 rounded-full border border-line-strong px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:border-brand-b hover:text-brand-b"
+            >
+              <X className="size-3.5" aria-hidden />
+              Limpar tudo
             </button>
           )}
         </div>
 
-        <Group title="Jogadores online" defaultOpen>
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">Pelo menos</span>
-            <select
-              value={filters.players ?? ''}
-              onChange={(e) => onChange({ players: e.target.value ? Number(e.target.value) : undefined })}
-              className="w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-ink"
-            >
-              <option value="">Qualquer quantidade</option>
-              {PLAYER_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n} jogadores
-                </option>
-              ))}
-            </select>
-          </label>
+        <Group title="Jogadores online" count={filters.players || filters.mode ? 1 : 0} defaultOpen>
+          <p className="mb-1.5 text-sm text-muted">Pelo menos</p>
+          <div role="radiogroup" aria-label="Jogadores online, pelo menos" className="grid grid-cols-5 gap-1.5">
+            {[undefined, ...playerChoices(filters.players)].map((n) => (
+              <button
+                key={n ?? 'qualquer'}
+                type="button"
+                role="radio"
+                aria-checked={filters.players === n}
+                onClick={() => onChange({ players: n, ...(n ? {} : { unknownPlayers: undefined }) })}
+                className={[
+                  'filter-chip rounded-md px-1 py-1.5 text-sm font-bold tabular-nums',
+                  n === undefined ? 'col-span-2' : '',
+                ].join(' ')}
+              >
+                {n === undefined ? 'Qualquer' : `${n}+`}
+              </button>
+            ))}
+          </div>
           <div role="radiogroup" aria-label="Tipo de partida" className="mt-3 grid grid-cols-2 gap-1 rounded-lg bg-surface-2 p-1 text-sm">
             {(
               [
@@ -112,7 +125,7 @@ export function FiltersSidebar({ filters, facets, onChange, onClear, initiallyOp
                 onClick={() => onChange({ mode: value })}
                 className={[
                   'rounded-md px-2 py-1.5 font-semibold transition-colors',
-                  filters.mode === value ? 'bg-brand-b text-white' : 'text-muted hover:text-ink',
+                  filters.mode === value ? 'bg-brand-b text-[#06202b]' : 'text-muted hover:text-ink',
                 ].join(' ')}
               >
                 {text}
@@ -128,40 +141,48 @@ export function FiltersSidebar({ filters, facets, onChange, onClear, initiallyOp
           </Check>
         </Group>
 
-        <Group title="Preço" hint={allHint(filters.prices, 'Todos')} defaultOpen>
-          {PRICE_OPTIONS.map(([value, text]) => (
-            <Check
-              key={value}
-              checked={Boolean(filters.prices?.includes(value))}
-              onChange={() => onChange({ prices: toggleIn(filters.prices, value) })}
-            >
-              {text}
-            </Check>
-          ))}
+        <Group title="Preço" hint="Todos" count={filters.prices?.length} defaultOpen>
+          <div className="flex flex-wrap gap-1.5">
+            {PRICE_OPTIONS.map(([value, text, Icon, color]) => (
+              <ToggleChip
+                key={value}
+                pressed={Boolean(filters.prices?.includes(value))}
+                onClick={() => onChange({ prices: toggleIn(filters.prices, value) })}
+                icon={Icon}
+                color={color}
+              >
+                {text}
+              </ToggleChip>
+            ))}
+          </div>
         </Group>
 
-        <Group title="Lojas" hint={allHint(filters.stores, 'Todas')} defaultOpen={Boolean(filters.stores?.length)}>
-          {(facets?.stores ?? []).map((store) => (
-            <Check
-              key={store.key}
-              checked={Boolean(filters.stores?.includes(store.key))}
-              onChange={() => onChange({ stores: toggleIn(filters.stores, store.key) })}
-            >
-              {store.name}
-            </Check>
-          ))}
+        <Group title="Lojas" hint="Todas" count={filters.stores?.length} defaultOpen={Boolean(filters.stores?.length)}>
+          <div className="flex flex-wrap gap-1.5">
+            {(facets?.stores ?? []).map((store) => (
+              <ToggleChip
+                key={store.key}
+                pressed={Boolean(filters.stores?.includes(store.key))}
+                onClick={() => onChange({ stores: toggleIn(filters.stores, store.key) })}
+              >
+                {store.name}
+              </ToggleChip>
+            ))}
+          </div>
         </Group>
 
-        <Group title="Gêneros" hint={allHint(filters.genres, 'Todos')} defaultOpen={Boolean(filters.genres?.length)}>
-          {shownGenres.map((genre) => (
-            <Check
-              key={genre.id}
-              checked={Boolean(filters.genres?.includes(genre.id))}
-              onChange={() => onChange({ genres: toggleIn(filters.genres, genre.id) })}
-            >
-              {label(genre.name)}
-            </Check>
-          ))}
+        <Group title="Gêneros" hint="Todos" count={filters.genres?.length} defaultOpen={Boolean(filters.genres?.length)}>
+          <div className="flex flex-wrap gap-1.5">
+            {shownGenres.map((genre) => (
+              <ToggleChip
+                key={genre.id}
+                pressed={Boolean(filters.genres?.includes(genre.id))}
+                onClick={() => onChange({ genres: toggleIn(filters.genres, genre.id) })}
+              >
+                {label(genre.name)}
+              </ToggleChip>
+            ))}
+          </div>
           {genres.length > GENRES_COLLAPSED && (
             <button
               type="button"
@@ -173,14 +194,14 @@ export function FiltersSidebar({ filters, facets, onChange, onClear, initiallyOp
           )}
         </Group>
 
-        <Group title="Lançamento" defaultOpen={Boolean(filters.yearMin || filters.yearMax)}>
+        <Group title="Lançamento" count={filters.yearMin || filters.yearMax ? 1 : 0} defaultOpen={Boolean(filters.yearMin || filters.yearMax)}>
           <div className="grid grid-cols-2 gap-2 text-sm">
             <YearInput label="De" value={filters.yearMin} onCommit={(yearMin) => onChange({ yearMin })} />
             <YearInput label="Até" value={filters.yearMax} onCommit={(yearMax) => onChange({ yearMax })} />
           </div>
         </Group>
 
-        <Group title="Resultados" defaultOpen={Boolean(filters.showDuplicates)}>
+        <Group title="Resultados" count={filters.showDuplicates ? 1 : 0} defaultOpen={Boolean(filters.showDuplicates)}>
           <Check
             checked={Boolean(filters.showDuplicates)}
             onChange={(v) => onChange({ showDuplicates: v || undefined })}
@@ -189,7 +210,7 @@ export function FiltersSidebar({ filters, facets, onChange, onClear, initiallyOp
           </Check>
         </Group>
 
-        <Group title="Nota mínima" defaultOpen={Boolean(filters.ratingMin)} last>
+        <Group title="Nota mínima" count={filters.ratingMin ? 1 : 0} defaultOpen={Boolean(filters.ratingMin)} last>
           <div role="radiogroup" aria-label="Nota mínima" className="flex flex-wrap gap-1.5">
             {[undefined, ...RATING_OPTIONS].map((value) => (
               <button
@@ -198,10 +219,7 @@ export function FiltersSidebar({ filters, facets, onChange, onClear, initiallyOp
                 role="radio"
                 aria-checked={filters.ratingMin === value}
                 onClick={() => onChange({ ratingMin: value })}
-                className={[
-                  'rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors',
-                  filters.ratingMin === value ? 'bg-brand-b text-white' : 'bg-surface-2 text-ink hover:brightness-110',
-                ].join(' ')}
+                className="filter-chip rounded-md px-3 py-1.5 text-sm font-bold"
               >
                 {value ? `${value / 10}+` : 'Qualquer'}
               </button>
@@ -213,31 +231,76 @@ export function FiltersSidebar({ filters, facets, onChange, onClear, initiallyOp
   );
 }
 
-/** Nada marcado vale como tudo marcado: o cabeçalho diz "Todas"; senão, quantas estão marcadas. */
-function allHint(list: unknown[] | undefined, allText: string): string {
-  return list?.length ? `${list.length} ${list.length === 1 ? 'marcada' : 'marcadas'}` : allText;
+/** Opções de jogadores, incluindo o valor atual se ele não estiver entre as padrão. */
+function playerChoices(current: number | undefined): number[] {
+  return current && !PLAYER_OPTIONS.includes(current)
+    ? [...PLAYER_OPTIONS, current].sort((a, b) => a - b)
+    : PLAYER_OPTIONS;
+}
+
+function CountBadge({ n }: { n: number }) {
+  return (
+    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-brand-b px-1.5 text-[0.7rem] font-extrabold tabular-nums text-[#06202b]">
+      {n}
+    </span>
+  );
+}
+
+/** Botão liga/desliga de um filtro: contorno quando desligado; tingido e com ✓ quando ligado. */
+function ToggleChip({
+  pressed,
+  onClick,
+  icon: Icon,
+  color = 'var(--brand-b)',
+  children,
+}: {
+  pressed: boolean;
+  onClick: () => void;
+  icon?: LucideIcon;
+  color?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      className="filter-chip inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-semibold"
+      style={{ '--chip': color } as CSSProperties}
+    >
+      {pressed ? (
+        <CheckIcon className="size-3.5" aria-hidden />
+      ) : (
+        Icon && <Icon className="size-3.5" style={{ color }} aria-hidden />
+      )}
+      {children}
+    </button>
+  );
 }
 
 function Group({
   title,
   hint,
+  count = 0,
   defaultOpen = false,
   last = false,
   children,
 }: {
   title: string;
-  /** Resumo ao lado do título, como "Todas". */
+  /** Resumo ao lado do título quando nada está marcado, como "Todas". */
   hint?: string;
+  /** Quantos filtros desta seção estão ativos (mostrado mesmo com a seção recolhida). */
+  count?: number;
   defaultOpen?: boolean;
   last?: boolean;
   children: ReactNode;
 }) {
   return (
     <details open={defaultOpen} className={`group ${last ? '' : 'border-b border-line'}`}>
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-semibold hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
-        <span>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 text-sm font-semibold transition-colors hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
+        <span className="inline-flex items-center gap-2">
           {title}
-          {hint && <span className="ml-2 text-xs font-normal text-muted">{hint}</span>}
+          {count > 0 ? <CountBadge n={count} /> : hint && <span className="text-xs font-normal text-muted">{hint}</span>}
         </span>
         <ChevronDown className="size-4 text-muted transition-transform group-open:rotate-180" aria-hidden />
       </summary>

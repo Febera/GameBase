@@ -2,13 +2,14 @@ import type { SearchFacets, SearchFilters } from '@rj/shared';
 import { X } from 'lucide-react';
 import { label } from '../../lib/labels';
 
-interface Chip {
+export interface Chip {
   key: string;
   text: string;
   remove: Partial<SearchFilters>;
 }
 
-function chipsOf(f: SearchFilters, facets: SearchFacets | undefined): Chip[] {
+/** Filtros ativos em texto, cada um com o que remover para desfazê-lo. */
+export function chipsOf(f: SearchFilters, facets: SearchFacets | undefined): Chip[] {
   const chips: Chip[] = [];
   if (f.players) {
     const kind = f.mode === 'coop' ? 'coop online' : 'online';
@@ -60,7 +61,7 @@ export function ActiveFilters({
           <button
             type="button"
             onClick={() => onChange(chip.remove)}
-            className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 py-1 pl-3 pr-2 text-sm font-semibold hover:brightness-110"
+            className="inline-flex items-center gap-1.5 rounded-full border border-line-strong bg-[color-mix(in_srgb,var(--surface)_80%,transparent)] py-1 pl-3 pr-2 text-sm font-semibold backdrop-blur transition-colors hover:border-brand-b"
           >
             {chip.text}
             <X className="size-3.5 text-muted" aria-hidden />

@@ -16,6 +16,11 @@ export function TopBar() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [focusInside, setFocusInside] = useState(false);
   const hidden = useHideOnScroll(optionsOpen || focusInside);
+  // Publica o estado na raiz: barras fixas da página (ordenação da busca, filtros) sobem junto.
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-topbar-hidden', hidden);
+    return () => document.documentElement.removeAttribute('data-topbar-hidden');
+  }, [hidden]);
   // Páginas com fundo de arte (home, jogo, oferta) ou dourado (recomendações): barra translúcida e desfocada.
   const { pathname } = useLocation();
   const glass =

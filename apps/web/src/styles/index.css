@@ -431,6 +431,84 @@
     background-color: var(--brand-b);
   }
 
+  /*
+   * Linha da busca: ao passar o mouse, levanta um pouco, ganha borda na cor de destaque e a
+   * arte cresce com o mesmo reflexo de vidro das capas da home.
+   */
+  .result-row {
+    transition:
+      translate var(--dur-3) var(--ease-out-quart),
+      border-color var(--dur-2) ease,
+      background-color var(--dur-2) ease,
+      box-shadow var(--dur-3) var(--ease-out-quart);
+  }
+  .result-img {
+    transition:
+      scale var(--dur-3) var(--ease-out-quart),
+      filter var(--dur-3) ease;
+  }
+  @media (hover: hover) {
+    .result-row:hover {
+      translate: 0 -2px;
+      border-color: color-mix(in srgb, var(--brand-b) 55%, var(--line));
+      background-color: var(--surface-2);
+      box-shadow: 0 14px 30px -18px rgb(0 0 0 / 0.7);
+    }
+    .result-row:hover .result-img {
+      scale: 1.06;
+      filter: brightness(1.08) saturate(1.08);
+    }
+    .result-row:hover .card-glass {
+      translate: 110% 0;
+      transition: translate 750ms var(--ease-in-out-cubic);
+    }
+  }
+
+  /*
+   * Elementos presos no topo ao rolar ficam logo abaixo da barra do site; quando ela se
+   * esconde (rolando para baixo), sobem junto, com a mesma duração.
+   */
+  :root {
+    --sticky-top: calc(4rem + env(safe-area-inset-top, 0px));
+  }
+  :root[data-topbar-hidden] {
+    --sticky-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  }
+  .sticky-under-topbar {
+    top: var(--sticky-top);
+    transition: top 200ms ease-out;
+  }
+  @media (min-width: 1024px) {
+    .filters-aside {
+      top: calc(var(--sticky-top) + 2rem);
+      transition: top 200ms ease-out;
+    }
+  }
+
+  /* Chips de filtro da busca: contorno quando desligados; tingidos na cor do chip quando ligados. */
+  .filter-chip {
+    --chip: var(--brand-b);
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    color: var(--ink);
+    transition:
+      background-color var(--dur-2) ease,
+      border-color var(--dur-2) ease,
+      color var(--dur-2) ease,
+      scale var(--dur-1, 120ms) ease;
+  }
+  .filter-chip:hover {
+    border-color: color-mix(in srgb, var(--chip) 60%, var(--line-strong));
+  }
+  .filter-chip:active {
+    scale: 0.97;
+  }
+  .filter-chip[aria-pressed='true'],
+  .filter-chip[aria-checked='true'] {
+    border-color: var(--chip);
+    background: color-mix(in srgb, var(--chip) 18%, var(--surface));
+  }
+
   /* Imagem com fusão (CrossfadeImage): entra transparente e aparece quando carrega. */
   .xfade {
     opacity: 0;

@@ -268,6 +268,7 @@ Se a Steam pedir para desacelerar, a fila pausa 2 minutos e continua.
 - [x] Buscas rápidas e botão Filtros na barra, novo card da busca, barra translúcida na página do jogo
 - [x] Recomendações em pódio de escada, com preço, DEMO e jogadores
 - [x] Desempenho: vínculos IGDB → Steam no banco, prazos por dado, preços em lote, ranking no Postgres, listas salvas, multiquery da IGDB
+- [x] Busca: título pelos filtros, ilustração, barra de ordenação fixa, filtros em chips, selo do grupo, posição em "Mais bem avaliados", hover com vidro e estado vazio que sugere o filtro a tirar
 - [x] Home: destaque do placar do grupo, atalhos, cabeçalhos com ícone, cupons, grade com destaque, ilustrações de fundo e grão
 
 Resumo das decisões e do contexto do projeto: [`CONTEXTO.md`](CONTEXTO.md).

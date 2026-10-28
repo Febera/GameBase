@@ -1,11 +1,14 @@
 import type { PointerEvent, ReactNode } from 'react';
 import { Link } from 'react-router';
+import { Trophy } from 'lucide-react';
 import { DemoTag } from '../ui/GameTags';
 import type { CardModel } from '../../lib/cards';
 
 interface Props {
   card: CardModel;
   featured?: boolean;
+  /** Apoios no placar do grupo, quando o jogo está nele (selo dourado). */
+  groupVotes?: number;
 }
 
 /** Inclinação máxima da capa, em graus, quando o mouse está na borda. */
@@ -67,15 +70,15 @@ export function CardAnchor({
  * A cor da etiqueta vem da variável --accent da seção.
  * Com `featured`, o card ocupa a altura da célula (grade com o primeiro jogo em 2 × 2).
  */
-export function Card({ card, featured = false }: Props) {
+export function Card({ card, featured = false, groupVotes }: Props) {
   return (
     <CardAnchor card={card} tilt className={`card-link group block rounded-md ${featured ? 'md:h-full' : ''}`}>
-      <CardContent card={card} featured={featured} />
+      <CardContent card={card} featured={featured} groupVotes={groupVotes} />
     </CardAnchor>
   );
 }
 
-function CardContent({ card, featured = false }: Props) {
+function CardContent({ card, featured = false, groupVotes }: Props) {
   const hasDetails = Boolean(card.price || card.note);
   const image = card.cover ?? (card.fallbackImage ? { url: card.fallbackImage, url2x: card.fallbackImage } : null);
   return (
@@ -115,6 +118,17 @@ function CardContent({ card, featured = false }: Props) {
       {card.badge && (
         <span className="absolute left-2.5 top-2.5 rounded-sm bg-[var(--accent)] px-2 py-0.5 text-xs font-bold tabular-nums text-[var(--on-accent)] shadow-sm">
           {card.badge}
+        </span>
+      )}
+
+      {groupVotes !== undefined && (
+        <span
+          className={`absolute left-2.5 ${card.badge ? 'top-9' : 'top-2.5'} inline-flex items-center gap-1 rounded-sm bg-[linear-gradient(120deg,#fff1c2,#f3d27a_45%,#c48a1d)] px-1.5 py-0.5 text-xs font-bold tabular-nums text-[#2a1d02] shadow-sm`}
+          title="Recomendado pelo grupo"
+        >
+          <Trophy className="size-3" aria-hidden />
+          {groupVotes}
+          <span className="sr-only"> apoios no placar do grupo</span>
         </span>
       )}
 

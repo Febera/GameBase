@@ -1,18 +1,24 @@
 import type { SearchFilters, SearchSort } from '@rj/shared';
-import { LayoutGrid, List, SearchX } from 'lucide-react';
-import { type CSSProperties, type ReactNode, useCallback, useEffect } from 'react';
+import { LayoutGrid, List } from 'lucide-react';
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 import { Card, CardSkeleton } from '../components/game/Card';
-import { ActiveFilters } from '../components/search/ActiveFilters';
+import { SectionArt } from '../components/home/SectionArt';
+import { ActiveFilters, chipsOf } from '../components/search/ActiveFilters';
+import { EmptyResults } from '../components/search/EmptyResults';
 import { FiltersSidebar } from '../components/search/FiltersSidebar';
-import { ResultRow } from '../components/search/ResultRow';
+import { type GroupPick, ResultRow } from '../components/search/ResultRow';
 import { ErrorState } from '../components/ui/ErrorState';
 import { SlowServerNote } from '../components/ui/SlowServerNote';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
+import { useBoard } from '../hooks/useRecommendations';
 import { useFacets, useSearchResults } from '../hooks/useSearch';
 import { useSlowLoading } from '../hooks/useSlowLoading';
 import { gameToCard } from '../lib/cards';
 import { ALL_PRICES, parseSearch, type ResultsView, toSearchParams } from '../lib/searchParams';
+
+/** Até quantos filtros entram no título; o resto vira "+N". */
+const TITLE_FILTERS = 3;
 
 const SORT_TABS: { value: SearchSort; text: string; needsQuery?: boolean }[] = [
   { value: 'relevance', text: 'Relevância', needsQuery: true },
@@ -57,6 +63,31 @@ export function SearchPage() {
   const activeSort: SearchSort = filters.sort ?? (filters.q ? 'relevance' : 'popular');
   const pending = first?.pending ?? 0;
 
+  // Jogos do placar do grupo: selo dourado com os apoios.
+  const board = useBoard().data;
+  const groupById = useMemo(() => {
+    const map = new Map<number, GroupPick>();
+    board?.entries.forEach((e, i) => map.set(e.game.id, { rank: i + 1, upvotes: e.upvotes }));
+    return map;
+  }, [board]);
+
+  // Título que diz o que está sendo buscado: o texto, ou os filtros ativos.
+  const chips = chipsOf(filters, facets);
+  const title = filters.q
+    ? `Resultados para “${filters.q}”`
+    : chips.length
+      ? chips
+          .slice(0, TITLE_FILTERS)
+          .map((c, i) => (i === 0 ? c.text.charAt(0).toUpperCase() + c.text.slice(1) : c.text))
+          .join(' · ') + (chips.length > TITLE_FILTERS ? ` · +${chips.length - TITLE_FILTERS}` : '')
+      : 'Explorar jogos';
+  const totalText = first
+    ? first.total === 0
+      ? 'Nenhum jogo encontrado'
+      : `${first.total}${first.total >= 500 ? '+' : ''} ${first.total === 1 ? 'jogo' : 'jogos'}`
+    : null;
+  const sortText = SORT_TABS.find((t) => t.value === activeSort)?.text.toLowerCase();
+
   return (
     <div className="grid gap-6 lg:grid-cols-[17rem_minmax(0,1fr)]" style={{ '--accent': 'var(--accent-new)' } as CSSProperties}>
       <FiltersSidebar
@@ -68,22 +99,22 @@ export function SearchPage() {
       />
 
       <div className="min-w-0 space-y-4">
-        <header>
-          <h1 className="font-display text-3xl font-extrabold tracking-tight">
-            {filters.q ? `Resultados para “${filters.q}”` : 'Explorar jogos'}
-          </h1>
-          {first && (
-            <p className="mt-1 text-muted">
-              {first.total === 0
-                ? 'Nenhum jogo encontrado'
-                : `${first.total}${first.total >= 500 ? '+' : ''} ${first.total === 1 ? 'jogo' : 'jogos'}`}
-            </p>
-          )}
+        <header className="relative isolate space-y-3 pb-1 pt-2">
+          <SectionArt kind="search" className="-top-24 h-[calc(100%+9rem)]" />
+          <div>
+            <h1 className="font-display text-3xl font-extrabold tracking-tight [text-wrap:balance] md:text-4xl">{title}</h1>
+            {totalText && (
+              <p className="mt-1 text-muted">
+                {totalText}
+                {first && first.total > 0 && sortText && <span> · {sortText}</span>}
+              </p>
+            )}
+          </div>
+          <ActiveFilters filters={filters} facets={facets} onChange={(patch) => update(patch)} />
         </header>
 
-        <ActiveFilters filters={filters} facets={facets} onChange={(patch) => update(patch)} />
-
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface p-1.5">
+        {/* Ordenação e visualização ficam presas no topo ao rolar, logo abaixo da barra do site. */}
+        <div className="sticky-under-topbar sticky z-20 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-md border border-line bg-[color-mix(in_srgb,var(--surface)_88%,transparent)] p-1.5 shadow-[0_10px_24px_-18px_rgb(0_0_0/0.8)] backdrop-blur-md">
           <div role="tablist" aria-label="Ordenar por" className="flex flex-wrap gap-1">
             {SORT_TABS.filter((t) => !t.needsQuery || filters.q).map((tab) => (
               <button
@@ -101,7 +132,10 @@ export function SearchPage() {
               </button>
             ))}
           </div>
-          <div className="flex gap-1" role="group" aria-label="Visualização">
+          <div className="flex items-center gap-1" role="group" aria-label="Visualização">
+            {first && first.total > 0 && (
+              <span className="mr-2 hidden text-sm font-semibold tabular-nums text-muted sm:inline">{totalText}</span>
+            )}
             <ViewButton active={view === 'list'} onClick={() => update({}, 'list')} label="Lista">
               <List className="size-5" aria-hidden />
             </ViewButton>
@@ -122,16 +156,17 @@ export function SearchPage() {
         {isError && items.length === 0 ? (
           <ErrorState message={error.message} onRetry={() => void refetch()} />
         ) : !isPending && items.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-line px-6 py-12 text-center">
-            <SearchX className="mx-auto size-8 text-muted" aria-hidden />
-            <p className="mt-3 font-semibold">Nenhum jogo com esses filtros.</p>
-            <p className="mt-1 text-sm text-muted">Tente remover algum filtro ou diminuir o número de jogadores.</p>
-          </div>
+          <EmptyResults filters={filters} facets={facets} onChange={(patch) => update(patch)} />
         ) : view === 'list' ? (
           <ul className="space-y-2.5">
-            {items.map((r) => (
+            {items.map((r, i) => (
               <li key={r.id}>
-                <ResultRow result={r} coopFirst={filters.mode === 'coop'} />
+                <ResultRow
+                  result={r}
+                  coopFirst={filters.mode === 'coop'}
+                  rank={activeSort === 'rating' ? i + 1 : undefined}
+                  group={groupById.get(r.id)}
+                />
               </li>
             ))}
             {(isPending || isFetchingNextPage) &&
@@ -143,7 +178,7 @@ export function SearchPage() {
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4 sm:grid-cols-[repeat(auto-fill,minmax(170px,1fr))]">
             {items.map((r) => (
               <li key={r.id}>
-                <Card card={gameToCard(r)} />
+                <Card card={gameToCard(r)} groupVotes={groupById.get(r.id)?.upvotes} />
               </li>
             ))}
             {(isPending || isFetchingNextPage) &&
