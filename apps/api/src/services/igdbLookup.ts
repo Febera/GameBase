@@ -2,8 +2,8 @@ import { chunk, quote } from '../clients/apicalypse.js';
 import type { IgdbClient } from '../clients/igdb.js';
 import { UpstreamError } from '../lib/errors.js';
 import { CARD_FIELDS, type IgdbGame } from './igdbMappers.js';
+import { pcCondition } from './pcPlatform.js';
 
-const PC_PLATFORM_ID = 6;
 /** Fonte "Steam" na tabela external_games da IGDB. */
 const STEAM_SOURCE = 1;
 
@@ -66,7 +66,7 @@ export function createIgdbLookup(igdb: IgdbClient): IgdbLookup {
         const names = part.map((t) => `name ~ ${quote(t)}`).join(' | ');
         const games = await igdb.query<IgdbGame>(
           'games',
-          `fields ${CARD_FIELDS}; where (${names}) & platforms = (${PC_PLATFORM_ID}); limit 500;`,
+          `fields ${CARD_FIELDS}; where (${names}) & ${pcCondition()}; limit 500;`,
         );
         for (const game of games) {
           const key = normalizeTitle(game.name);

@@ -1,7 +1,8 @@
 import type { SearchFilters } from '@rj/shared';
 import { quote } from '../clients/apicalypse.js';
+import { pcCondition } from './pcPlatform.js';
+export { PC_PLATFORM_ID } from './pcPlatform.js';
 
-export const PC_PLATFORM_ID = 6;
 export const ACCEPTED_GAME_TYPES = [0, 4, 8, 9, 10, 11];
 
 export interface QueryContext {
@@ -24,7 +25,7 @@ const yearStart = (year: number) => Math.floor(Date.UTC(year, 0, 1) / 1000);
 
 /** Monta a consulta Apicalypse a partir dos filtros. Função pura, para ser testada isoladamente. */
 export function buildSearchQuery(filters: SearchFilters, ctx: QueryContext): BuiltQuery {
-  const conditions = [`platforms = (${PC_PLATFORM_ID})`, `game_type = (${ACCEPTED_GAME_TYPES.join(',')})`];
+  const conditions = [pcCondition(ctx.sourceField), `game_type = (${ACCEPTED_GAME_TYPES.join(',')})`];
   const q = filters.q?.trim();
   // Sem texto, "relevância" não faz sentido: vira "mais populares".
   const sort = filters.sort === 'relevance' && !q ? 'popular' : (filters.sort ?? (q ? 'relevance' : 'popular'));

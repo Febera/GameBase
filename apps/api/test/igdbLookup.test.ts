@@ -25,7 +25,7 @@ describe('igdbLookup', () => {
     const result = await createIgdbLookup(igdb).byTitles(['Portal', 'Say "Hi"']);
     expect(result.get('portal')?.id).toBe(2);
     expect(bodies[0]).toContain('name ~ "Say \\"Hi\\""');
-    expect(bodies[0]).toContain('platforms = (6)');
+    expect(bodies[0]).toContain('(platforms = (6) | external_games.external_game_source = 1)');
   });
 
   it('usa o campo antigo de fonte quando a IGDB recusa o novo', async () => {

@@ -20,7 +20,8 @@ import { categorize, steamPrice } from './gamesService.js';
 import type { IgdbLookup } from './igdbLookup.js';
 import { CARD_FIELDS, type IgdbGame, igdbImageUrl, toGameCard } from './igdbMappers.js';
 import { paginate } from './listing.js';
-import { ACCEPTED_GAME_TYPES, buildSearchQuery, PC_PLATFORM_ID } from './searchQuery.js';
+import { pcCondition } from './pcPlatform.js';
+import { ACCEPTED_GAME_TYPES, buildSearchQuery } from './searchQuery.js';
 import { bayesianRank, MIN_RATED_REVIEWS } from './sorting.js';
 import { MISSING_REVIEWS_RETRY_MS, type SteamSync } from './steamSync.js';
 import type { SteamApp } from '../db/steamAppsRepository.js';
@@ -349,7 +350,7 @@ export function createSearchService({
       const entries = await cache.getOrSet(`suggest:${text.toLowerCase()}`, WINDOW_TTL_MS, async () => {
         const games = await igdb.query<IgdbGame>(
           'games',
-          `search ${quote(text)}; fields name,first_release_date,cover.image_id; where platforms = (${PC_PLATFORM_ID}) & game_type = (${ACCEPTED_GAME_TYPES.join(',')}); limit 12;`,
+          `search ${quote(text)}; fields name,first_release_date,cover.image_id; where ${pcCondition()} & game_type = (${ACCEPTED_GAME_TYPES.join(',')}); limit 12;`,
         );
         const adultIds = await adult.adultIgdbIds(games.map((g) => g.id));
         return games.map((g) => ({

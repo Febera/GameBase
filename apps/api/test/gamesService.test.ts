@@ -57,7 +57,7 @@ describe('gamesService.getNewPopular', () => {
     });
     const page = await service.getNewPopular(0, 10, 'hide');
     expect(page.items.map((g) => g.id)).toEqual([2, 3, 1, 8, 9]);
-    expect(calls[1]).toContain('platforms = (6)');
+    expect(calls[1]).toContain('(platforms = (6) | external_games.external_game_source = 1)');
     expect(calls[1]).toContain('game_type = (0,4,8,9,10,11)');
   });
 

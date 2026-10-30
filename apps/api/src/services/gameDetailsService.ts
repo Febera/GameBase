@@ -13,8 +13,8 @@ import { storeLinksFrom } from './storeLinks.js';
 import { dedupeEditions } from './dedupe.js';
 import type { GiveawaysService } from './giveawaysService.js';
 import type { SteamSync } from './steamSync.js';
+import { PC_PLATFORM_ID, pcCondition } from './pcPlatform.js';
 
-const PC_PLATFORM_ID = 6;
 const MAX_SIMILAR = 9;
 const DETAILS_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -118,7 +118,7 @@ export function createGameDetailsService({
    * vão à IGDB numa requisição só.
    */
   async function similarAndAdult(id: number, similarIds: number[]): Promise<{ similar: IgdbGame[]; adultIds: Set<number> }> {
-    const similarQuery = `fields ${CARD_FIELDS}; where id = (${similarIds.join(',')}) & platforms = (${PC_PLATFORM_ID}) & cover != null; limit 30;`;
+    const similarQuery = `fields ${CARD_FIELDS}; where id = (${similarIds.join(',')}) & ${pcCondition()} & cover != null; limit 30;`;
     const condition = adult.adultCondition ? await adult.adultCondition() : undefined;
     if (condition === undefined) {
       // Filtro sem condição exposta (ex.: nos testes): duas consultas, como antes.

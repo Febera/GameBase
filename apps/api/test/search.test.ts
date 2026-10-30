@@ -14,7 +14,7 @@ describe('buildSearchQuery', () => {
     const q = buildSearchQuery({}, ctx);
     expect(q.search).toBeNull();
     expect(q.sort).toBe('total_rating_count desc');
-    expect(q.where).toContain('platforms = (6)');
+    expect(q.where).toContain('(platforms = (6) | external_games.external_game_source = 1)');
   });
 
   it('com texto e relevância usa search; com outra ordem usa nome parecido', () => {

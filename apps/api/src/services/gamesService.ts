@@ -11,9 +11,10 @@ import { dedupeEditions } from './dedupe.js';
 import { paginate, visible } from './listing.js';
 import { sortBy } from './sorting.js';
 import type { SteamSync } from './steamSync.js';
+import { pcCondition } from './pcPlatform.js';
+export { PC_PLATFORM_ID } from './pcPlatform.js';
 
 /** ID da plataforma "PC (Microsoft Windows)" na IGDB. */
-export const PC_PLATFORM_ID = 6;
 
 /**
  * Tipos de jogo aceitos: jogo principal, expansão standalone, remake,
@@ -96,7 +97,7 @@ export function createGamesService({
     return [
       `first_release_date >= ${fromS}`,
       `first_release_date <= ${nowS}`,
-      `platforms = (${PC_PLATFORM_ID})`,
+      pcCondition(),
       `game_type = (${ACCEPTED_GAME_TYPES.join(',')})`,
       'cover != null',
     ].join(' & ');
